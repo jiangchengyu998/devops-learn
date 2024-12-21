@@ -67,6 +67,7 @@ sudo tee /etc/systemd/system/docker.service.d/http-proxy.conf <<-'EOF'
 [Service]
 Environment="HTTP_PROXY=http://192.168.101.51:7890"
 Environment="HTTPS_PROXY=http://192.168.101.51:7890"
+Environment="NO_PROXY=localhost,127.0.0.1,,192.168.101.0/24"
 EOF
 ```
 
@@ -84,7 +85,6 @@ sudo systemctl restart docker
 ### 如何安装 gitlab
 docker-compose.yml
 ```yaml  
-version: '3.1'
 services:
   gitlab:
     image: 'gitlab/gitlab-ce:latest'
@@ -134,6 +134,10 @@ services:
     image: jenkins/jenkins
     container_name: jenkins
     restart: always
+    environment:
+      - HTTP_PROXY=http://192.168.101.51:7890
+      - HTTPS_PROXY=http://192.168.101.51:7890
+      - NO_PROXY=localhost,127.0.0.1,,192.168.101.0/24
     ports:
       - 8080:8080
       - 50000:50000
@@ -172,3 +176,51 @@ services:
 https://mirrors.tuna.tsinghua.edu.cn/jenkins/updates/update-center.json
 ```
 
+### sonarqube 安装
+
+```yaml
+services:
+  db:
+    image: postgres
+    container_name: db
+    restart: always
+    ports:
+      - "5432:5432"
+    networks:
+      - sonarnet
+    environment:
+      POSTGRES_USER: sonar
+      POSTGRES_PASSWORD: sonar
+  sonarqube:
+    image: sonarqube:8.9.6-community
+    container_name: sonarqube
+    restart: always
+    depends_on:
+      - db
+    ports:
+      - "9000:9000"
+    networks:
+      - sonarnet
+    environment:
+      SONAR_JDBC_URL: jdbc:postgresql://db:5432/sonar
+      SONAR_JDBC_USERNAME: sonar
+      SONAR_JDBC_PASSWORD: sonar
+      HTTP_PROXY: http://192.168.101.51:7890
+      HTTPS_PROXY: http://192.168.101.51:7890
+      NO_PROXY: localhost,127.0.0.1,,192.168.101.0/24
+networks:
+  sonarnet:
+    driver: bridge
+```
+修改内存大小
+```shell
+vim /etc/sysctl.conf
+vm.max_map_count=262144
+sysctl -p
+```
+启动
+```shell
+docker-compose up -d
+```
+默认的账号密码都是admin
+生成了一个 token 6da0d36ca3a51f8fa2fcad8cff37fd474f2d1a77
