@@ -167,21 +167,22 @@ sonar-scanner
 # 修改数据卷中的hudson.model.UpdateCenter.xml文件
 <?xml version='1.1' encoding='UTF-8'?>
 <sites>
-<site>
-<id>default</id>
-<url>https://updates.jenkins.io/update-center.json</url>
-</site>
+    <site>
+        <id>default</id>
+        <url>https://updates.jenkins.io/update-center.json</url>
+    </site>
 </sites>
 # 将下载地址替换为http://mirror.esuni.jp/jenkins/updates/update-center.json
 <?xml version='1.1' encoding='UTF-8'?>
 <sites>
-<site>
-<id>default</id>
-<url>http://mirror.esuni.jp/jenkins/updates/update-center.json</url>
-</site>
+    <site>
+        <id>default</id>
+        <url>http://mirror.esuni.jp/jenkins/updates/update-center.json</url>
+    </site>
 </sites>
 # 清华大学的插件源也可以
-https://mirrors.tuna.tsinghua.edu.cn/jenkins/updates/update-center.json
+# https://mirrors.tuna.tsinghua.edu.cn/jenkins/updates/update-center.json
+
 ```
 
 ### sonarqube 安装
