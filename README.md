@@ -67,7 +67,7 @@ sudo tee /etc/systemd/system/docker.service.d/http-proxy.conf <<-'EOF'
 [Service]
 Environment="HTTP_PROXY=http://192.168.101.51:7890"
 Environment="HTTPS_PROXY=http://192.168.101.51:7890"
-Environment="NO_PROXY=localhost,127.0.0.1,,192.168.101.0/24"
+Environment="NO_PROXY=localhost,127.0.0.1,192.168.101.0/24"
 EOF
 ```
 

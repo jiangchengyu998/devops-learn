@@ -66,4 +66,23 @@ docker image prune -f
 ```
 
 ### 构建完成后，制作成镜像，推送到harbor，然后ssh到目标服务器启动
+#### 安装harbor
+修改 harbor.yml
+关闭 https
+默认密码 admin/Harbor12345
+然后在docker中添加配置
+```json
+{
+  "insecure-registries": ["192.168.101.102:80"]
+}
+```
+```shell
+docker login -u admin -p Harbor12345 192.168.101.102:80
+docker tag mytest:v1.0.0 192.168.101.102:80/repo/mytest:v1.0.0
+docker push 192.168.101.102:80/repo/mytest:v1.0.0
+docker pull 192.168.101.102:80/repo/mytest:v1.0.0
+```
+
+#### 在Jenkins 容器内使用 docker
+
 
