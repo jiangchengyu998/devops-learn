@@ -3,7 +3,7 @@
 使用 tag=v2.0.0 来测试
 目标服务器上要安装有docker  docker-compose。
 
-### Jenkins 配置
+### 构建完成后，通过ssh把jar 推送到目标服务器使用docker 启动
 #### 安装插件
   - Git Parameter
   - Publish Over SSH
@@ -47,5 +47,23 @@ sonar.sourceEncoding=UTF-8
 ![img.png](images/img_git_parameter.png)
 ![img.png](images/img_build_1.png)
 ![img.png](images/img_build_2.png)
+```shell
+sonar.source=./ 
+sonar.projectName=${JOB_NAME}
+sonar.projectKey=${JOB_NAME}
+sonar.java.binaries=./target
+sonar.exclusions=**/*.java
+sonar.test.exclusions=**/*.java
+sonar.coverage.exclusions=**/*.java
+```
 ![img.png](images/img_build_after.png)
+```shell
+cd /root/test/docker
+mv ../target/*.jar ./
+docker-compose down
+docker-compose up -d --build
+docker image prune -f
+```
+
+### 构建完成后，制作成镜像，推送到harbor，然后ssh到目标服务器启动
 
