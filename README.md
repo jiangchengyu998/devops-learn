@@ -154,6 +154,14 @@ services:
  docker exec -it jenkins cat /var/jenkins_home/secrets/initialAdminPassword
 ```
 
+如果想要一些可执行软件在Jenkins里面执行，那就把可执行文件放到宿主机的 data 目录，例如
+```shell
+[root@localhost data]# ll | awk '$9 == "maven" || $9 == "sonar-scanner" || $9 == "jdk" {print $9}'
+jdk
+maven
+sonar-scanner
+```
+
 插件下载慢，咋办？
 ```shell
 # 修改数据卷中的hudson.model.UpdateCenter.xml文件
