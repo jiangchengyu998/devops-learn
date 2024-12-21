@@ -113,3 +113,62 @@ services:
  docker exec -it gitlab cat /etc/gitlab/initial_root_password
 ```
 
+### tar.gz  文件解压
+```shell
+tar -zxvf filename.tar.gz
+#解压的指定目录
+tar -zxvf example.tar.gz -C /path/to/destination
+```
+解释：
+z：表示通过 gzip 解压文件。
+x：表示解压文件。
+v：表示显示详细的解压过程。
+f：表示后面跟的是文件名。
+
+
+### 安装Jenkins
+
+```yaml
+services:
+  jenkins:
+    image: jenkins/jenkins
+    container_name: jenkins
+    restart: always
+    ports:
+      - 8080:8080
+      - 50000:50000
+    volumes:
+      - ./data/:/var/jenkins_home/
+```
+
+```shell
+ mkdir jenkins
+ cd jenkins
+ docker-compose up -d
+ 
+ # 查看root 账户密码
+ docker exec -it jenkins cat /var/jenkins_home/secrets/initialAdminPassword
+```
+
+插件下载慢，咋办？
+```shell
+# 修改数据卷中的hudson.model.UpdateCenter.xml文件
+<?xml version='1.1' encoding='UTF-8'?>
+<sites>
+<site>
+<id>default</id>
+<url>https://updates.jenkins.io/update-center.json</url>
+</site>
+</sites>
+# 将下载地址替换为http://mirror.esuni.jp/jenkins/updates/update-center.json
+<?xml version='1.1' encoding='UTF-8'?>
+<sites>
+<site>
+<id>default</id>
+<url>http://mirror.esuni.jp/jenkins/updates/update-center.json</url>
+</site>
+</sites>
+# 清华大学的插件源也可以
+https://mirrors.tuna.tsinghua.edu.cn/jenkins/updates/update-center.json
+```
+
