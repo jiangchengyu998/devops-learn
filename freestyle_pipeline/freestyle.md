@@ -84,5 +84,33 @@ docker pull 192.168.101.102:80/repo/mytest:v1.0.0
 ```
 
 #### 在Jenkins 容器内使用 docker
+修改docker.sock 的用户组和权限
+```shell
+cd /var/run
+chown root:root docker.sock
+chmod o+rw docker.sock
+```
 
+修改 docker-compose.yaml
+```yaml
+services:
+  jenkins:
+    image: jenkins/jenkins
+    container_name: jenkins
+    restart: always
+    environment:
+      - HTTP_PROXY=http://192.168.101.51:7890
+      - HTTPS_PROXY=http://192.168.101.51:7890
+      - NO_PROXY=localhost,127.0.0.1,,192.168.101.0/24
+    ports:
+      - 8080:8080
+      - 50000:50000
+    volumes:
+      - ./data/:/var/jenkins_home/
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /usr/bin/docker:/usr/bin/docker
+      - /etc/docker/daemon.json:/etc/docker/daemon.json
+```
+
+从新启动Jenkins 容器就可以在Jenkins 中使用 docker 命令了
 
