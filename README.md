@@ -231,6 +231,7 @@ sysctl -p
 ```shell
 docker-compose up -d
 # 默认的账号密码都是admin
-# 生成了一个 token 6da0d36ca3a51f8fa2fcad8cff37fd474f2d1a77
+# 生成了一个 token 
+6da0d36ca3a51f8fa2fcad8cff37fd474f2d1a77
 ```
 

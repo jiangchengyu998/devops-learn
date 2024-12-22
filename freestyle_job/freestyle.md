@@ -101,7 +101,7 @@ services:
     environment:
       - HTTP_PROXY=http://192.168.101.51:7890
       - HTTPS_PROXY=http://192.168.101.51:7890
-      - NO_PROXY=localhost,127.0.0.1,,192.168.101.0/24
+      - NO_PROXY=localhost,127.0.0.1,192.168.101.0/24
     ports:
       - 8080:8080
       - 50000:50000
