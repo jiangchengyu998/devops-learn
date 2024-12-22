@@ -67,9 +67,17 @@ docker image prune -f
 
 ### 构建完成后，制作成镜像，推送到harbor，然后ssh到目标服务器启动
 #### 安装harbor
+
+
 修改 harbor.yml
 关闭 https
 默认密码 admin/Harbor12345
+
+```shell
+/usr/local/harbor
+./install.sh
+```
+
 然后在docker中添加配置
 ```json
 {
