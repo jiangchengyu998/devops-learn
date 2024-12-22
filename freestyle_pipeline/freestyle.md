@@ -114,3 +114,15 @@ services:
 
 从新启动Jenkins 容器就可以在Jenkins 中使用 docker 命令了
 
+#### Job 配置
+去掉原来的构建后操作，然后在增加推送image的命令
+![img.png](images/img_push_image.png)
+
+```shell
+mv target/*.jar docker/
+docker build -t mytest:$tag ./docker
+docker login -u admin -p Harbor12345 192.168.101.102:80
+docker tag mytest:$tag 192.168.101.102:80/repo/mytest:$tag
+docker push 192.168.101.102:80/repo/mytest:$tag
+```
+
