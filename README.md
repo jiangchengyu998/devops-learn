@@ -69,6 +69,11 @@ Environment="HTTP_PROXY=http://192.168.101.51:7890"
 Environment="HTTPS_PROXY=http://192.168.101.51:7890"
 Environment="NO_PROXY=localhost,127.0.0.1,192.168.101.0/24"
 EOF
+
+systemctl daemon-reload
+systemctl restart docker
+
+
 ```
 
 设置docker 的配置文件
