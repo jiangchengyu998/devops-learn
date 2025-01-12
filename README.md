@@ -240,3 +240,18 @@ docker-compose up -d
 6da0d36ca3a51f8fa2fcad8cff37fd474f2d1a77
 ```
 
+### 卸载docker
+```shell
+sudo systemctl stop docker
+sudo systemctl disable docker
+sudo yum remove docker docker-common docker-snapshot docker-engine
+sudo rm -rf /var/lib/docker
+sudo rm -rf /etc/docker
+sudo rm -rf /var/run/docker
+rm -rf /var/log/docker
+yum remove docker-buildx-plugin docker-compose-plugin -y 
+yum remove docker-ce docker-ce-cli containerd.io -y 
+sudo yum autoremove -y 
+reboot 
+docker --version
+```
