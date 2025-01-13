@@ -215,3 +215,8 @@ do
 done
 ```
 
+# spring boot 配置prometheus
+参考 https://github.com/jiangchengyu998/simple-sb-app.git
+
+可以在 garafana 中添加springboot的模板，或者 node-exporter 的模板
+

@@ -74,7 +74,7 @@ docker image prune -f
 默认密码 admin/Harbor12345
 
 ```shell
-/usr/local/harbor
+cd /usr/local/harbor
 ./install.sh
 ```
 
@@ -94,9 +94,8 @@ docker pull 192.168.101.102:80/repo/mytest:v1.0.0
 #### 在Jenkins 容器内使用 docker
 修改docker.sock 的用户组和权限
 ```shell
-cd /var/run
-chown root:root docker.sock
-chmod o+rw docker.sock
+chown root:root /var/run/docker.sock
+chmod o+rw /var/run/docker.sock
 ```
 
 修改 docker-compose.yaml
