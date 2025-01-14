@@ -31,10 +31,7 @@ stop_service() {
 # 停止 Prometheus
 stop_service "prometheus"
 
-# 停止 node_exporter
-stop_service "node_exporter"
-
-# 停止 Grafana
-#stop_service "grafana"
+# 停止 alertmanager
+stop_service "alertmanager"
 
 echo "All services stopped."

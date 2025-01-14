@@ -20,10 +20,7 @@ start_service() {
 # 启动 Prometheus
 start_service "prometheus" "prometheus --config.file=prometheus.yml --storage.tsdb.path=/data/prometheus --web.listen-address=0.0.0.0:9090 --web.external-url=http://192.168.101.102:9090"
 
-# 启动 node_exporter
-start_service "node_exporter" "node_exporter --web.listen-address=0.0.0.0:9100"
-
-# 启动 Grafana
-#start_service "grafana" "grafana-server --config=/etc/grafana/grafana.ini --homepath=/usr/share/grafana"
+# 启动 alertmanager
+start_service "alertmanager" "alertmanager --config.file=alertmanager.yml --web.listen-address=0.0.0.0:9093 --web.external-url=http://192.168.101.102:9093"
 
 echo "All services started."
