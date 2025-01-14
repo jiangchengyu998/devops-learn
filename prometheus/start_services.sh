@@ -7,6 +7,8 @@ PID_DIR="$BASE_DIR/pids"
 [ ! -d "$LOG_DIR" ] && mkdir -p "$LOG_DIR"
 [ ! -d "$PID_DIR" ] && mkdir -p "$PID_DIR"
 
+sh stop_services.sh
+
 start_service() {
   local name=$1
   local cmd=$2
