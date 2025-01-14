@@ -1,0 +1,11 @@
+groups:
+  - name: Request Spike Alert
+    rules:
+      - alert: RequestSpike
+        expr: increase(ping_request_count[2s]) > 0
+        for: 0s
+        labels:
+          severity: warning
+        annotations:
+          summary: "Request count spike detected"
+          description: "The request count increased by more than 5 within 10 seconds. Current rate:"

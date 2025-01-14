@@ -1,0 +1,11 @@
+global:
+  resolve_timeout: 10s
+route:
+  receiver: webhook_receiver
+  group_interval: 10s
+  repeat_interval: 10s
+receivers:
+    - name: webhook_receiver
+      webhook_configs:
+        - url: 'http://192.168.101.102:8081/webhook'
+          send_resolved: false

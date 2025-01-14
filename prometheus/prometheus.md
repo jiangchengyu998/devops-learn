@@ -57,6 +57,8 @@ wget https://github.com/prometheus/node_exporter/releases/download/v1.8.2/node_e
 tar -zxvf node_exporter-1.8.2.linux-amd64.tar.gz
 cp node_exporter-1.8.2.linux-amd64/node_exporter /usr/local/bin/
 node_exporter --web.listen-address=0.0.0.0:9100
+#后台运行，日志保存到/tmp/node_exporter.log
+nohup node_exporter --web.listen-address=0.0.0.0:9100 > /tmp/node_exporter.log 2>&1 &
 ```
 
 # 使用go写一个prometheus client 添加这个指标ping_request_count
@@ -100,7 +102,7 @@ go run server.go  # 第二次启动只需执行这个命令
 ```
 
 # 使用go编写一个webhook
-main.go
+webhook.go
 ```go
 package main
 
@@ -193,7 +195,8 @@ groups:
 ```shell
 wget https://dl.grafana.com/oss/release/grafana-11.4.0.linux-amd64.tar.gz
 tar -zxvf grafana-11.4.0.linux-amd64.tar.gz
-cd grafana-11.4.0/bin/grafana-server/bin
+cd grafana-11.4.0/bin
+# /usr/local/grafana-v11.4.0/bin
 ./grafana-server
 ```
 默认端口3000
