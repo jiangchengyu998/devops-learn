@@ -37,4 +37,7 @@ stop_service "alertmanager"
 # 停止 gargana
 stop_service "gargana"
 
+# 停止 node_exporter
+stop_service "node_exporter"
+
 echo "All services stopped."

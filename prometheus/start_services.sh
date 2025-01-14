@@ -29,4 +29,7 @@ start_service "gargana" "grafana-server"
 cd -
 pwd
 
+# 启动 node_exporter
+start_service "node_exporter" "node_exporter"
+
 echo "All services started."
