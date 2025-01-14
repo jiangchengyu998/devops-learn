@@ -34,4 +34,7 @@ pwd
 # 启动 node_exporter
 start_service "node_exporter" "node_exporter"
 
+# 启动 webhook
+start_service "webhook" "go run webhook.go"
+
 echo "All services started."

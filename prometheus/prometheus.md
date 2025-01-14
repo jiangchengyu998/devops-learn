@@ -152,7 +152,7 @@ func main() {
 ```
 启动
 ```shell
-go run main.go
+go run webhook.go
 ```
 
 

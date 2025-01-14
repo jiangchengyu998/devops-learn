@@ -40,4 +40,7 @@ stop_service "gargana"
 # 停止 node_exporter
 stop_service "node_exporter"
 
+# 停止 webhook
+stop_service "webhook"
+
 echo "All services stopped."
