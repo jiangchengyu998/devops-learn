@@ -31,6 +31,9 @@ stop_service() {
 # 停止 Prometheus
 stop_service "prometheus"
 
+# 停止 node_exporter
+stop_service "node_exporter"
+
 # 停止 Grafana
 #stop_service "grafana"
 
