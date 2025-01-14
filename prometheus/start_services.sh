@@ -23,4 +23,10 @@ start_service "prometheus" "prometheus --config.file=prometheus.yml --storage.ts
 # 启动 alertmanager
 start_service "alertmanager" "alertmanager --config.file=alertmanager.yml --web.listen-address=0.0.0.0:9093 --web.external-url=http://192.168.101.102:9093"
 
+# 启动 gargana
+cd /usr/local/grafana-v11.4.0/bin
+start_service "gargana" "grafana-server"
+cd -
+pwd
+
 echo "All services started."

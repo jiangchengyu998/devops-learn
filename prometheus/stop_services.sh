@@ -34,4 +34,7 @@ stop_service "prometheus"
 # 停止 alertmanager
 stop_service "alertmanager"
 
+# 停止 gargana
+stop_service "gargana"
+
 echo "All services stopped."
