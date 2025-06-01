@@ -1,5 +1,40 @@
 # devops-learn
 
+在 Alibaba Cloud Linux 3.2104 LTS 64位 系统上安装 Docker，可以按照以下步骤操作：
+
+1. **卸载旧版本（如果有）**  
+   ```bash
+   sudo yum remove docker docker-client docker-client-latest docker-common docker-latest docker-latest-logrotate docker-logrotate docker-engine
+   ```
+
+2. **安装依赖包**  
+   ```bash
+   sudo yum install -y yum-utils device-mapper-persistent-data lvm2
+   ```
+
+3. **添加 Docker 仓库**  
+   ```bash
+   sudo yum-config-manager --add-repo https://mirrors.aliyun.com/docker-ce/linux/centos/docker-ce.repo
+   ```
+
+4. **安装 Docker**  
+   ```bash
+   sudo yum install -y docker-ce docker-ce-cli containerd.io
+   ```
+
+5. **启动 Docker 并设置开机自启**  
+   ```bash
+   sudo systemctl start docker
+   sudo systemctl enable docker
+   ```
+
+6. **验证 Docker 是否安装成功**  
+   ```bash
+   docker version
+   ```
+
+如需加速拉取镜像，可配置阿里云加速器。
+
 这个仓库自己用来记录学习运维相关的知识的。
 
 ### 将 CentOS7 系统的 yum 镜像源替换为阿里云的镜像源
