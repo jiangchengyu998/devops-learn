@@ -96,14 +96,16 @@ sudo systemctl status firewalld
 ```
 
 ### 给docker 设置代理
-
+      - HTTP_PROXY=http://100.95.91.54:7890
+      - HTTPS_PROXY=http://100.95.91.54:7890
+      - NO_PROXY=localhost,127.0.0.1,100.64.0.0/10,.ydphoto.com
 ```shell
 sudo mkdir -p /etc/systemd/system/docker.service.d
 sudo tee /etc/systemd/system/docker.service.d/http-proxy.conf <<-'EOF'
 [Service]
-Environment="HTTP_PROXY=http://192.168.101.51:7890"
-Environment="HTTPS_PROXY=http://192.168.101.51:7890"
-Environment="NO_PROXY=localhost,127.0.0.1,192.168.101.0/24"
+Environment="HTTP_PROXY=http://100.95.91.54:7890"
+Environment="HTTPS_PROXY=http://100.95.91.54:7890"
+Environment="NO_PROXY=localhost,127.0.0.1,100.64.0.0/10,.ydphoto.com"
 EOF
 
 systemctl daemon-reload
@@ -131,9 +133,10 @@ services:
     image: 'gitlab/gitlab-ce:latest'
     container_name: gitlab
     restart: always
+    user: root
     environment:
       GITLAB_OMNIBUS_CONFIG: |
-        external_url 'http://192.168.101.101:8929'
+        external_url 'http://192.168.101.511:8929'
         gitlab_rails['gitlab_shell_ssh_port'] = 2224
     ports:
       - '8929:8929'
@@ -169,26 +172,36 @@ f：表示后面跟的是文件名。
 
 ### 安装Jenkins
 
+```shell
+docker volume create jenkins-data
+mkdir jenkins
+cd jenkins
+```
+
+docker-compose.yml
 ```yaml
 services:
   jenkins:
-    image: jenkins/jenkins
+    image: jenkins/jenkins:jdk21
     container_name: jenkins
+    user: root
     restart: always
     environment:
-      - HTTP_PROXY=http://192.168.101.51:7890
-      - HTTPS_PROXY=http://192.168.101.51:7890
-      - NO_PROXY=localhost,127.0.0.1,,192.168.101.0/24
+      - HTTP_PROXY=http://100.95.91.54:7890
+      - HTTPS_PROXY=http://100.95.91.54:7890
+      - NO_PROXY=localhost,127.0.0.1,100.64.0.0/10,.ydphoto.com
     ports:
       - 8080:8080
       - 50000:50000
     volumes:
       - ./data/:/var/jenkins_home/
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /usr/bin/docker:/usr/bin/docker
+      
 ```
 
 ```shell
- mkdir jenkins
- cd jenkins
+
  docker-compose up -d
  
  # 查看root 账户密码
