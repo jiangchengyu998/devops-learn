@@ -197,6 +197,8 @@ services:
       - ./data/:/var/jenkins_home/
       - /var/run/docker.sock:/var/run/docker.sock
       - /usr/bin/docker:/usr/bin/docker
+      - /usr/local/bin/aliyun:/usr/local/bin/aliyun 
+      - ~/.aliyun:/root/.aliyun
       
 ```
 
