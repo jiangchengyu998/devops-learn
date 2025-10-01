@@ -181,25 +181,26 @@ cd jenkins
 docker-compose.yml
 ```yaml
 services:
-  jenkins:
-    image: jenkins/jenkins:jdk21
-    container_name: jenkins
-    user: root
-    restart: always
-    environment:
-      - HTTP_PROXY=http://100.95.91.54:7890
-      - HTTPS_PROXY=http://100.95.91.54:7890
-      - NO_PROXY=localhost,127.0.0.1,100.64.0.0/10,.ydphoto.com
-    ports:
-      - 8080:8080
-      - 50000:50000
-    volumes:
-      - ./data/:/var/jenkins_home/
-      - /var/run/docker.sock:/var/run/docker.sock
-      - /usr/bin/docker:/usr/bin/docker
-      - /usr/local/bin/aliyun:/usr/local/bin/aliyun 
-      - ~/.aliyun:/root/.aliyun
-      
+   jenkins:
+      image: jenkins/jenkins:jdk21
+      container_name: jenkins
+      user: root
+      restart: always
+      ports:
+         - 8080:8080
+         - 50000:50000
+      volumes:
+         - ./data/:/var/jenkins_home/
+         - /var/run/docker.sock:/var/run/docker.sock
+         - /usr/bin/docker:/usr/bin/docker
+         - /usr/local/bin/aliyun:/usr/local/bin/aliyun
+         - /root/.aliyun:/root/.aliyun
+         - /etc/localtime:/etc/localtime:ro
+         - /etc/timezone:/etc/timezone:ro
+      environment:
+         - JAVA_OPTS=-Xms1024m -Xmx4096m
+      mem_limit: 4g
+ 
 ```
 
 ```shell
@@ -305,4 +306,9 @@ yum remove docker-ce docker-ce-cli containerd.io -y
 sudo yum autoremove -y 
 reboot 
 docker --version
+```
+
+```shell
+ssh-keyscan -p 22 8.138.212.208 >> /var/jenkins_home/.ssh/known_hosts
+
 ```
