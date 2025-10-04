@@ -103,9 +103,9 @@ sudo systemctl status firewalld
 sudo mkdir -p /etc/systemd/system/docker.service.d
 sudo tee /etc/systemd/system/docker.service.d/http-proxy.conf <<-'EOF'
 [Service]
-Environment="HTTP_PROXY=http://100.95.91.54:7890"
-Environment="HTTPS_PROXY=http://100.95.91.54:7890"
-Environment="NO_PROXY=localhost,127.0.0.1,100.64.0.0/10,.ydphoto.com"
+Environment="HTTP_PROXY=http://192.168.101.51:7890"
+Environment="HTTPS_PROXY=http://192.168.101.51:7890"
+Environment="NO_PROXY=localhost,127.0.0.1,100.64.0.0/10,192.168.101.0/24,.ydphoto.com"
 EOF
 
 systemctl daemon-reload
