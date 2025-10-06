@@ -19,7 +19,7 @@ origin  git@github.com:jiangchengyu998/one-click-deployment.git (push)
 执行：
 
 git remote add saas git@github.com:jiangchengyu998/one-click-deployment-saas.git
-
+git remote add opensource git@github.com:jiangchengyu998/jenkins-pipeline-shared.git
 
 确认一下：
 
