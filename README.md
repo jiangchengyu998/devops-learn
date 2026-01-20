@@ -312,3 +312,27 @@ docker --version
 ssh-keyscan -p 22 8.138.212.208 >> /var/jenkins_home/.ssh/known_hosts
 
 ```
+
+
+```java
+@Configuration
+public class RestTemplateConfig {
+
+    @Bean
+    public RestTemplate restTemplate() throws Exception {
+        SSLContext sslContext = SSLContextBuilder.create()
+                .loadTrustMaterial(null, (chain, authType) -> true)
+                .build();
+
+        CloseableHttpClient httpClient = HttpClients.custom()
+                .setSSLContext(sslContext)
+                .setSSLHostnameVerifier(NoopHostnameVerifier.INSTANCE)
+                .build();
+
+        return new RestTemplate(
+                new HttpComponentsClientHttpRequestFactory(httpClient)
+        );
+    }
+}
+
+```
