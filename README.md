@@ -317,6 +317,8 @@ ssh-keyscan -p 22 8.138.212.208 >> /var/jenkins_home/.ssh/known_hosts
 ```java
 import org.apache.hc.client5.http.classic.CloseableHttpClient;
 import org.apache.hc.client5.http.impl.classic.HttpClients;
+import org.apache.hc.client5.http.impl.io.PoolingHttpClientConnectionManager;
+import org.apache.hc.client5.http.impl.io.PoolingHttpClientConnectionManagerBuilder;
 import org.apache.hc.client5.http.ssl.NoopHostnameVerifier;
 import org.apache.hc.client5.http.ssl.SSLConnectionSocketFactory;
 import org.apache.hc.client5.http.ssl.TrustAllStrategy;
@@ -339,19 +341,25 @@ public class RestTemplateConfig {
                 .loadTrustMaterial(null, TrustAllStrategy.INSTANCE)
                 .build();
 
-        // 2. 不校验 hostname
+        // 2. SSL Socket Factory（不校验 hostname）
         SSLConnectionSocketFactory sslSocketFactory =
                 new SSLConnectionSocketFactory(
                         sslContext,
                         NoopHostnameVerifier.INSTANCE
                 );
 
-        // 3. 构建 HttpClient
+        // 3. 关键点：通过 ConnectionManager 注入
+        PoolingHttpClientConnectionManager connectionManager =
+                PoolingHttpClientConnectionManagerBuilder.create()
+                        .setSSLSocketFactory(sslSocketFactory)
+                        .build();
+
+        // 4. 构建 HttpClient
         CloseableHttpClient httpClient = HttpClients.custom()
-                .setSSLSocketFactory(sslSocketFactory)
+                .setConnectionManager(connectionManager)
                 .build();
 
-        // 4. 注入 RestTemplate
+        // 5. RestTemplate
         HttpComponentsClientHttpRequestFactory requestFactory =
                 new HttpComponentsClientHttpRequestFactory(httpClient);
 
