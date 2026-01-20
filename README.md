@@ -315,24 +315,49 @@ ssh-keyscan -p 22 8.138.212.208 >> /var/jenkins_home/.ssh/known_hosts
 
 
 ```java
+import org.apache.hc.client5.http.classic.CloseableHttpClient;
+import org.apache.hc.client5.http.impl.classic.HttpClients;
+import org.apache.hc.client5.http.ssl.NoopHostnameVerifier;
+import org.apache.hc.client5.http.ssl.SSLConnectionSocketFactory;
+import org.apache.hc.client5.http.ssl.TrustAllStrategy;
+import org.apache.hc.core5.ssl.SSLContextBuilder;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.http.client.HttpComponentsClientHttpRequestFactory;
+import org.springframework.web.client.RestTemplate;
+
+import javax.net.ssl.SSLContext;
+
 @Configuration
 public class RestTemplateConfig {
 
     @Bean
     public RestTemplate restTemplate() throws Exception {
+
+        // 1. 信任所有证书
         SSLContext sslContext = SSLContextBuilder.create()
-                .loadTrustMaterial(null, (chain, authType) -> true)
+                .loadTrustMaterial(null, TrustAllStrategy.INSTANCE)
                 .build();
 
+        // 2. 不校验 hostname
+        SSLConnectionSocketFactory sslSocketFactory =
+                new SSLConnectionSocketFactory(
+                        sslContext,
+                        NoopHostnameVerifier.INSTANCE
+                );
+
+        // 3. 构建 HttpClient
         CloseableHttpClient httpClient = HttpClients.custom()
-                .setSSLContext(sslContext)
-                .setSSLHostnameVerifier(NoopHostnameVerifier.INSTANCE)
+                .setSSLSocketFactory(sslSocketFactory)
                 .build();
 
-        return new RestTemplate(
-                new HttpComponentsClientHttpRequestFactory(httpClient)
-        );
+        // 4. 注入 RestTemplate
+        HttpComponentsClientHttpRequestFactory requestFactory =
+                new HttpComponentsClientHttpRequestFactory(httpClient);
+
+        return new RestTemplate(requestFactory);
     }
 }
+
 
 ```
