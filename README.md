@@ -368,4 +368,7 @@ public class RestTemplateConfig {
 }
 
 
+
 ```
+-XX:+UseG1GC
+-Xlog:gc*,gc+heap=info:stdout:time,uptime,level,tags
