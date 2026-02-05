@@ -372,3 +372,325 @@ public class RestTemplateConfig {
 ```
 -XX:+UseG1GC
 -Xlog:gc*,gc+heap=info:stdout:time,uptime,level,tags
+
+
+好，这个切入点**非常专业** 👍
+一句先给你结论：
+
+> **jq ≈ JSON 世界里的 SQL + awk + sed（合体版）**
+> 如果你会 SQL，用 jq 会非常快上手。
+
+下面我用 **「SQL → jq」一一对照**，全部配 **k8s 实战 JSON**，你可以直接 copy 用。
+
+---
+
+## 一、整体心智模型对照（先立住）
+
+| SQL       | jq               |   |
+| --------- | ---------------- | - |
+| 表（table）  | JSON 数组          |   |
+| 行（row）    | 数组里的对象           |   |
+| 列（column） | 对象字段             |   |
+| SELECT    | `.` / 管道 `       | ` |
+| WHERE     | `select()`       |   |
+| FROM      | 输入流              |   |
+| JOIN      | 手动（map / reduce） |   |
+| GROUP BY  | `group_by()`     |   |
+| COUNT     | `length`         |   |
+| ORDER BY  | `sort_by()`      |   |
+
+👉 **jq 是“流式 SQL”**，不是声明式
+
+---
+
+## 二、SELECT：取字段
+
+### SQL
+
+```sql
+SELECT name, podIP FROM pods;
+```
+
+### jq（kubectl）
+
+```bash
+kubectl get pods -o json \
+| jq '.items[] | {name: .metadata.name, ip: .status.podIP}'
+```
+
+输出：
+
+```json
+{
+  "name": "nginx",
+  "ip": "10.244.1.12"
+}
+```
+
+👉 `.items[]` ≈ **FROM pods**
+
+---
+
+### 只要值（像 SQL 返回列）
+
+```bash
+jq -r '.items[] | "\(.metadata.name) \(.status.podIP)"'
+```
+
+---
+
+## 三、WHERE：条件过滤（最爽的地方）
+
+### SQL
+
+```sql
+SELECT name FROM pods WHERE phase = 'Running';
+```
+
+### jq
+
+```bash
+jq -r '.items[]
+  | select(.status.phase=="Running")
+  | .metadata.name'
+```
+
+📌 `select()` 就是 jq 的 WHERE
+
+---
+
+### 多条件 WHERE
+
+```sql
+WHERE phase='Running' AND node='node-1'
+```
+
+```bash
+jq '.items[]
+  | select(.status.phase=="Running" and .spec.nodeName=="node-1")
+  | .metadata.name'
+```
+
+---
+
+## 四、COUNT / 聚合
+
+### SQL
+
+```sql
+SELECT COUNT(*) FROM pods;
+```
+
+### jq
+
+```bash
+jq '.items | length'
+```
+
+---
+
+### 按状态统计（GROUP BY）
+
+### SQL
+
+```sql
+SELECT phase, COUNT(*)
+FROM pods
+GROUP BY phase;
+```
+
+### jq
+
+```bash
+jq '.items
+  | group_by(.status.phase)
+  | map({phase: .[0].status.phase, count: length})'
+```
+
+输出：
+
+```json
+[
+  { "phase": "Pending", "count": 1 },
+  { "phase": "Running", "count": 5 }
+]
+```
+
+🧠 **这是 jq 进阶分水岭，用熟了你就赢麻了**
+
+---
+
+## 五、ORDER BY / LIMIT
+
+### SQL
+
+```sql
+SELECT name FROM pods ORDER BY name LIMIT 3;
+```
+
+### jq
+
+```bash
+jq -r '.items
+  | sort_by(.metadata.name)
+  | .[:3]
+  | .[].metadata.name'
+```
+
+---
+
+### ORDER BY 数字字段
+
+```bash
+jq '.items | sort_by(.status.startTime)'
+```
+
+---
+
+## 六、IN / EXISTS（SQL 常见）
+
+### SQL
+
+```sql
+WHERE phase IN ('Running', 'Pending')
+```
+
+### jq
+
+```bash
+jq '.items[]
+  | select(.status.phase=="Running" or .status.phase=="Pending")
+  | .metadata.name'
+```
+
+或更像 SQL 的写法：
+
+```bash
+jq '.items[]
+  | select(.status.phase | IN("Running","Pending"))
+  | .metadata.name'
+```
+
+---
+
+## 七、数组字段（容器 / 端口）——jq 完胜 jsonpath
+
+### SQL（概念上）
+
+```sql
+SELECT pod, image FROM containers;
+```
+
+### jq
+
+```bash
+jq -r '.items[]
+  | .metadata.name as $pod
+  | .spec.containers[]
+  | "\($pod) \(.image)"'
+```
+
+输出：
+
+```
+nginx nginx:1.25
+nginx busybox:1.36
+```
+
+📌 `as $var` ≈ SQL 的临时变量 / 子查询别名
+
+---
+
+## 八、JOIN（jq 可以，但要理智）
+
+### SQL
+
+```sql
+SELECT pod.name, node.name
+FROM pod JOIN node ON pod.node = node.name;
+```
+
+### jq（示意）
+
+```bash
+jq -n '
+  ($pods.items[]) as $p
+  | ($nodes.items[])
+  | select($p.spec.nodeName == .metadata.name)
+  | {pod: $p.metadata.name, node: .metadata.name}
+'
+```
+
+⚠️ 真实生产中：
+
+* jq JOIN **可做**
+* 但复杂 JOIN → **上 Python / Go**
+
+---
+
+## 九、UPDATE / 转换数据（SQL 很弱，jq 很强）
+
+### SQL
+
+```sql
+SELECT name, UPPER(phase) FROM pods;
+```
+
+### jq
+
+```bash
+jq '.items[]
+  | {name: .metadata.name, phase: (.status.phase | ascii_upcase)}'
+```
+
+---
+
+### 增加字段
+
+```bash
+jq '.items[]
+  | . + {env: "prod"}'
+```
+
+---
+
+## 十、实战对比总结（说人话）
+
+### 如果你在 k8s 里：
+
+| 场景      | 推荐             |
+| ------- | -------------- |
+| 简单取字段   | jsonpath       |
+| 条件 + 统计 | **jq**         |
+| 脚本自动化   | **jq**         |
+| 表格给人看   | custom-columns |
+| 超复杂逻辑   | Python         |
+
+一句狠话版总结：
+
+> **jsonpath 是镊子，jq 是瑞士军刀**
+
+---
+
+## 十一、给你一套「SQL → jq 速查表」
+
+| SQL        | jq             |
+| ---------- | -------------- |
+| SELECT a,b | `{a:.a, b:.b}` |
+| WHERE      | `select()`     |
+| COUNT      | `length`       |
+| GROUP BY   | `group_by()`   |
+| ORDER BY   | `sort_by()`    |
+| LIMIT      | `.[start:end]` |
+| AS         | `as $var`      |
+
+---
+
+如果你愿意，我可以下一步直接帮你做：
+
+* 🔥 **k8s 日常运维 jq 命令集（Pod / Node / Deployment）**
+* 🔥 **jq + bash + Jenkins 实战流水线**
+* 🔥 **把你 SQL 思维完整迁移成 jq 思维**
+
+你更想哪一个？
+
