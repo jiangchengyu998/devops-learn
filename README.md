@@ -694,3 +694,258 @@ jq '.items[]
 
 你更想哪一个？
 
+这个问题**问到 jq 的“灵魂层”了** 👍
+很多人用 jq 用不明白，**90% 就卡在你这一个点**。
+
+我先给你一句**结论版**，再慢慢拆。
+
+---
+
+## 一句话结论（先记住）
+
+> **`.items` 是“整个数组”**
+> **`.items[]` 是“把数组拆成一条一条的元素”**
+
+就像 SQL 里：
+
+* `.items` ≈ **整张表**
+* `.items[]` ≈ **FROM 表（一行一行往外吐）**
+
+---
+
+## 一、用最小例子感受差别（强烈建议你跟着看）
+
+假设 kubectl 返回的是：
+
+```json
+{
+  "items": [
+    { "name": "pod-a", "phase": "Running" },
+    { "name": "pod-b", "phase": "Pending" }
+  ]
+}
+```
+
+---
+
+## 二、`.items`：你拿到的是「一个数组」
+
+```bash
+jq '.items'
+```
+
+输出：
+
+```json
+[
+  { "name": "pod-a", "phase": "Running" },
+  { "name": "pod-b", "phase": "Pending" }
+]
+```
+
+📌 **此时 jq 眼里只有 1 个值：一个数组**
+
+---
+
+### 对 `.items` 能干啥？
+
+#### ✅ 统计
+
+```bash
+jq '.items | length'
+```
+
+```
+2
+```
+
+#### ✅ 排序
+
+```bash
+jq '.items | sort_by(.name)'
+```
+
+#### ✅ 分组
+
+```bash
+jq '.items | group_by(.phase)'
+```
+
+👉 **所有“表级操作”都用 `.items`**
+
+---
+
+## 三、`.items[]`：数组被“打散成多行”
+
+```bash
+jq '.items[]'
+```
+
+输出（注意变化）：
+
+```json
+{ "name": "pod-a", "phase": "Running" }
+{ "name": "pod-b", "phase": "Pending" }
+```
+
+📌 jq 现在是在 **“流模式”**：
+
+* 每个对象是一条独立的数据
+* 后面的过滤器会 **逐条执行**
+
+---
+
+### `.items[]` 能干啥？
+
+#### ✅ WHERE（条件过滤）
+
+```bash
+jq '.items[] | select(.phase=="Running")'
+```
+
+#### ✅ SELECT 单列
+
+```bash
+jq '.items[] | .name'
+```
+
+输出：
+
+```
+"pod-a"
+"pod-b"
+```
+
+👉 **“行级操作”一定要用 `[]`**
+
+---
+
+## 四、对照 SQL，一下就通了
+
+### SQL
+
+```sql
+SELECT name FROM pods WHERE phase='Running';
+```
+
+### jq 正确写法
+
+```bash
+jq '.items[]
+  | select(.phase=="Running")
+  | .name'
+```
+
+❌ 错误写法（新手常犯）：
+
+```bash
+jq '.items
+  | select(.phase=="Running")'
+```
+
+👉 因为 `.items` 是数组，数组上**没有 `phase` 字段**
+
+---
+
+## 五、什么时候用哪个？（黄金法则）
+
+### ✅ 用 `.items` 的场景
+
+> **你要把它当“一个整体”**
+
+* COUNT
+* GROUP BY
+* SORT
+* SLICE
+
+```bash
+jq '.items | length'
+jq '.items | sort_by(.metadata.name)'
+jq '.items | .[:5]'
+```
+
+---
+
+### ✅ 用 `.items[]` 的场景
+
+> **你要把它当“多条记录”**
+
+* WHERE
+* SELECT 列
+* 打印每一行
+* 进入下一层数组
+
+```bash
+jq '.items[] | .metadata.name'
+jq '.items[] | select(.status.phase=="Running")'
+```
+
+---
+
+## 六、可以连着用（这是高手标志）
+
+```bash
+jq '.items
+  | sort_by(.metadata.name)
+  | .[]
+  | .metadata.name'
+```
+
+🧠 思路翻译成人话：
+
+1. **先整体排序**
+2. **再拆成一行一行**
+3. **最后取字段**
+
+这就像：
+
+```sql
+SELECT name FROM (
+  SELECT * FROM pods ORDER BY name
+);
+```
+
+---
+
+## 七、再往下一层：`containers[]`
+
+这套规则是**递归的** 👇
+
+```bash
+jq '.items[]
+  | .spec.containers[]   # 再拆一层
+  | .image'
+```
+
+📌 每遇到数组，**想“逐个处理”就加 `[]`**
+
+---
+
+## 八、一张“防晕对照表”（收藏级）
+
+| 写法              | jq 眼里的东西 | SQL 类比 |
+| --------------- | -------- | ------ |
+| `.items`        | 一个数组     | 表      |
+| `.items[]`      | 一条条对象    | 行      |
+| `.containers`   | 容器数组     | 子表     |
+| `.containers[]` | 单个容器     | 子表行    |
+
+---
+
+## 九、一句狠但准的话
+
+> **jq 的 `[]`，不是“取下标”，而是“展开流”**
+
+你一旦用 **“流”** 的角度看 jq，后面所有语法都会自然。
+
+---
+
+如果你愿意，下一步我可以直接带你做：
+
+* 🔥 **复杂 jq 一行命令拆解训练**
+* 🔥 **kubectl + jq 排障实战套路**
+* 🔥 **把你常写的 SQL 翻译成 jq（逐条练）**
+
+你选一个，我带你飞 🚀
+
+
