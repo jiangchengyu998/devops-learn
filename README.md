@@ -312,3 +312,640 @@ docker --version
 ssh-keyscan -p 22 8.138.212.208 >> /var/jenkins_home/.ssh/known_hosts
 
 ```
+
+
+```java
+import org.apache.hc.client5.http.classic.CloseableHttpClient;
+import org.apache.hc.client5.http.impl.classic.HttpClients;
+import org.apache.hc.client5.http.impl.io.PoolingHttpClientConnectionManager;
+import org.apache.hc.client5.http.impl.io.PoolingHttpClientConnectionManagerBuilder;
+import org.apache.hc.client5.http.ssl.NoopHostnameVerifier;
+import org.apache.hc.client5.http.ssl.SSLConnectionSocketFactory;
+import org.apache.hc.client5.http.ssl.TrustAllStrategy;
+import org.apache.hc.core5.ssl.SSLContextBuilder;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.http.client.HttpComponentsClientHttpRequestFactory;
+import org.springframework.web.client.RestTemplate;
+
+import javax.net.ssl.SSLContext;
+
+@Configuration
+public class RestTemplateConfig {
+
+    @Bean
+    public RestTemplate restTemplate() throws Exception {
+
+        // 1. 信任所有证书
+        SSLContext sslContext = SSLContextBuilder.create()
+                .loadTrustMaterial(null, TrustAllStrategy.INSTANCE)
+                .build();
+
+        // 2. SSL Socket Factory（不校验 hostname）
+        SSLConnectionSocketFactory sslSocketFactory =
+                new SSLConnectionSocketFactory(
+                        sslContext,
+                        NoopHostnameVerifier.INSTANCE
+                );
+
+        // 3. 关键点：通过 ConnectionManager 注入
+        PoolingHttpClientConnectionManager connectionManager =
+                PoolingHttpClientConnectionManagerBuilder.create()
+                        .setSSLSocketFactory(sslSocketFactory)
+                        .build();
+
+        // 4. 构建 HttpClient
+        CloseableHttpClient httpClient = HttpClients.custom()
+                .setConnectionManager(connectionManager)
+                .build();
+
+        // 5. RestTemplate
+        HttpComponentsClientHttpRequestFactory requestFactory =
+                new HttpComponentsClientHttpRequestFactory(httpClient);
+
+        return new RestTemplate(requestFactory);
+    }
+}
+
+
+
+```
+-XX:+UseG1GC
+-Xlog:gc*,gc+heap=info:stdout:time,uptime,level,tags
+
+
+好，这个切入点**非常专业** 👍
+一句先给你结论：
+
+> **jq ≈ JSON 世界里的 SQL + awk + sed（合体版）**
+> 如果你会 SQL，用 jq 会非常快上手。
+
+下面我用 **「SQL → jq」一一对照**，全部配 **k8s 实战 JSON**，你可以直接 copy 用。
+
+---
+
+## 一、整体心智模型对照（先立住）
+
+| SQL       | jq               |   |
+| --------- | ---------------- | - |
+| 表（table）  | JSON 数组          |   |
+| 行（row）    | 数组里的对象           |   |
+| 列（column） | 对象字段             |   |
+| SELECT    | `.` / 管道 `       | ` |
+| WHERE     | `select()`       |   |
+| FROM      | 输入流              |   |
+| JOIN      | 手动（map / reduce） |   |
+| GROUP BY  | `group_by()`     |   |
+| COUNT     | `length`         |   |
+| ORDER BY  | `sort_by()`      |   |
+
+👉 **jq 是“流式 SQL”**，不是声明式
+
+---
+
+## 二、SELECT：取字段
+
+### SQL
+
+```sql
+SELECT name, podIP FROM pods;
+```
+
+### jq（kubectl）
+
+```bash
+kubectl get pods -o json \
+| jq '.items[] | {name: .metadata.name, ip: .status.podIP}'
+```
+
+输出：
+
+```json
+{
+  "name": "nginx",
+  "ip": "10.244.1.12"
+}
+```
+
+👉 `.items[]` ≈ **FROM pods**
+
+---
+
+### 只要值（像 SQL 返回列）
+
+```bash
+jq -r '.items[] | "\(.metadata.name) \(.status.podIP)"'
+```
+
+---
+
+## 三、WHERE：条件过滤（最爽的地方）
+
+### SQL
+
+```sql
+SELECT name FROM pods WHERE phase = 'Running';
+```
+
+### jq
+
+```bash
+jq -r '.items[]
+  | select(.status.phase=="Running")
+  | .metadata.name'
+```
+
+📌 `select()` 就是 jq 的 WHERE
+
+---
+
+### 多条件 WHERE
+
+```sql
+WHERE phase='Running' AND node='node-1'
+```
+
+```bash
+jq '.items[]
+  | select(.status.phase=="Running" and .spec.nodeName=="node-1")
+  | .metadata.name'
+```
+
+---
+
+## 四、COUNT / 聚合
+
+### SQL
+
+```sql
+SELECT COUNT(*) FROM pods;
+```
+
+### jq
+
+```bash
+jq '.items | length'
+```
+
+---
+
+### 按状态统计（GROUP BY）
+
+### SQL
+
+```sql
+SELECT phase, COUNT(*)
+FROM pods
+GROUP BY phase;
+```
+
+### jq
+
+```bash
+jq '.items
+  | group_by(.status.phase)
+  | map({phase: .[0].status.phase, count: length})'
+```
+
+输出：
+
+```json
+[
+  { "phase": "Pending", "count": 1 },
+  { "phase": "Running", "count": 5 }
+]
+```
+
+🧠 **这是 jq 进阶分水岭，用熟了你就赢麻了**
+
+---
+
+## 五、ORDER BY / LIMIT
+
+### SQL
+
+```sql
+SELECT name FROM pods ORDER BY name LIMIT 3;
+```
+
+### jq
+
+```bash
+jq -r '.items
+  | sort_by(.metadata.name)
+  | .[:3]
+  | .[].metadata.name'
+```
+
+---
+
+### ORDER BY 数字字段
+
+```bash
+jq '.items | sort_by(.status.startTime)'
+```
+
+---
+
+## 六、IN / EXISTS（SQL 常见）
+
+### SQL
+
+```sql
+WHERE phase IN ('Running', 'Pending')
+```
+
+### jq
+
+```bash
+jq '.items[]
+  | select(.status.phase=="Running" or .status.phase=="Pending")
+  | .metadata.name'
+```
+
+或更像 SQL 的写法：
+
+```bash
+jq '.items[]
+  | select(.status.phase | IN("Running","Pending"))
+  | .metadata.name'
+```
+
+---
+
+## 七、数组字段（容器 / 端口）——jq 完胜 jsonpath
+
+### SQL（概念上）
+
+```sql
+SELECT pod, image FROM containers;
+```
+
+### jq
+
+```bash
+jq -r '.items[]
+  | .metadata.name as $pod
+  | .spec.containers[]
+  | "\($pod) \(.image)"'
+```
+
+输出：
+
+```
+nginx nginx:1.25
+nginx busybox:1.36
+```
+
+📌 `as $var` ≈ SQL 的临时变量 / 子查询别名
+
+---
+
+## 八、JOIN（jq 可以，但要理智）
+
+### SQL
+
+```sql
+SELECT pod.name, node.name
+FROM pod JOIN node ON pod.node = node.name;
+```
+
+### jq（示意）
+
+```bash
+jq -n '
+  ($pods.items[]) as $p
+  | ($nodes.items[])
+  | select($p.spec.nodeName == .metadata.name)
+  | {pod: $p.metadata.name, node: .metadata.name}
+'
+```
+
+⚠️ 真实生产中：
+
+* jq JOIN **可做**
+* 但复杂 JOIN → **上 Python / Go**
+
+---
+
+## 九、UPDATE / 转换数据（SQL 很弱，jq 很强）
+
+### SQL
+
+```sql
+SELECT name, UPPER(phase) FROM pods;
+```
+
+### jq
+
+```bash
+jq '.items[]
+  | {name: .metadata.name, phase: (.status.phase | ascii_upcase)}'
+```
+
+---
+
+### 增加字段
+
+```bash
+jq '.items[]
+  | . + {env: "prod"}'
+```
+
+---
+
+## 十、实战对比总结（说人话）
+
+### 如果你在 k8s 里：
+
+| 场景      | 推荐             |
+| ------- | -------------- |
+| 简单取字段   | jsonpath       |
+| 条件 + 统计 | **jq**         |
+| 脚本自动化   | **jq**         |
+| 表格给人看   | custom-columns |
+| 超复杂逻辑   | Python         |
+
+一句狠话版总结：
+
+> **jsonpath 是镊子，jq 是瑞士军刀**
+
+---
+
+## 十一、给你一套「SQL → jq 速查表」
+
+| SQL        | jq             |
+| ---------- | -------------- |
+| SELECT a,b | `{a:.a, b:.b}` |
+| WHERE      | `select()`     |
+| COUNT      | `length`       |
+| GROUP BY   | `group_by()`   |
+| ORDER BY   | `sort_by()`    |
+| LIMIT      | `.[start:end]` |
+| AS         | `as $var`      |
+
+---
+
+如果你愿意，我可以下一步直接帮你做：
+
+* 🔥 **k8s 日常运维 jq 命令集（Pod / Node / Deployment）**
+* 🔥 **jq + bash + Jenkins 实战流水线**
+* 🔥 **把你 SQL 思维完整迁移成 jq 思维**
+
+你更想哪一个？
+
+这个问题**问到 jq 的“灵魂层”了** 👍
+很多人用 jq 用不明白，**90% 就卡在你这一个点**。
+
+我先给你一句**结论版**，再慢慢拆。
+
+---
+
+## 一句话结论（先记住）
+
+> **`.items` 是“整个数组”**
+> **`.items[]` 是“把数组拆成一条一条的元素”**
+
+就像 SQL 里：
+
+* `.items` ≈ **整张表**
+* `.items[]` ≈ **FROM 表（一行一行往外吐）**
+
+---
+
+## 一、用最小例子感受差别（强烈建议你跟着看）
+
+假设 kubectl 返回的是：
+
+```json
+{
+  "items": [
+    { "name": "pod-a", "phase": "Running" },
+    { "name": "pod-b", "phase": "Pending" }
+  ]
+}
+```
+
+---
+
+## 二、`.items`：你拿到的是「一个数组」
+
+```bash
+jq '.items'
+```
+
+输出：
+
+```json
+[
+  { "name": "pod-a", "phase": "Running" },
+  { "name": "pod-b", "phase": "Pending" }
+]
+```
+
+📌 **此时 jq 眼里只有 1 个值：一个数组**
+
+---
+
+### 对 `.items` 能干啥？
+
+#### ✅ 统计
+
+```bash
+jq '.items | length'
+```
+
+```
+2
+```
+
+#### ✅ 排序
+
+```bash
+jq '.items | sort_by(.name)'
+```
+
+#### ✅ 分组
+
+```bash
+jq '.items | group_by(.phase)'
+```
+
+👉 **所有“表级操作”都用 `.items`**
+
+---
+
+## 三、`.items[]`：数组被“打散成多行”
+
+```bash
+jq '.items[]'
+```
+
+输出（注意变化）：
+
+```json
+{ "name": "pod-a", "phase": "Running" }
+{ "name": "pod-b", "phase": "Pending" }
+```
+
+📌 jq 现在是在 **“流模式”**：
+
+* 每个对象是一条独立的数据
+* 后面的过滤器会 **逐条执行**
+
+---
+
+### `.items[]` 能干啥？
+
+#### ✅ WHERE（条件过滤）
+
+```bash
+jq '.items[] | select(.phase=="Running")'
+```
+
+#### ✅ SELECT 单列
+
+```bash
+jq '.items[] | .name'
+```
+
+输出：
+
+```
+"pod-a"
+"pod-b"
+```
+
+👉 **“行级操作”一定要用 `[]`**
+
+---
+
+## 四、对照 SQL，一下就通了
+
+### SQL
+
+```sql
+SELECT name FROM pods WHERE phase='Running';
+```
+
+### jq 正确写法
+
+```bash
+jq '.items[]
+  | select(.phase=="Running")
+  | .name'
+```
+
+❌ 错误写法（新手常犯）：
+
+```bash
+jq '.items
+  | select(.phase=="Running")'
+```
+
+👉 因为 `.items` 是数组，数组上**没有 `phase` 字段**
+
+---
+
+## 五、什么时候用哪个？（黄金法则）
+
+### ✅ 用 `.items` 的场景
+
+> **你要把它当“一个整体”**
+
+* COUNT
+* GROUP BY
+* SORT
+* SLICE
+
+```bash
+jq '.items | length'
+jq '.items | sort_by(.metadata.name)'
+jq '.items | .[:5]'
+```
+
+---
+
+### ✅ 用 `.items[]` 的场景
+
+> **你要把它当“多条记录”**
+
+* WHERE
+* SELECT 列
+* 打印每一行
+* 进入下一层数组
+
+```bash
+jq '.items[] | .metadata.name'
+jq '.items[] | select(.status.phase=="Running")'
+```
+
+---
+
+## 六、可以连着用（这是高手标志）
+
+```bash
+jq '.items
+  | sort_by(.metadata.name)
+  | .[]
+  | .metadata.name'
+```
+
+🧠 思路翻译成人话：
+
+1. **先整体排序**
+2. **再拆成一行一行**
+3. **最后取字段**
+
+这就像：
+
+```sql
+SELECT name FROM (
+  SELECT * FROM pods ORDER BY name
+);
+```
+
+---
+
+## 七、再往下一层：`containers[]`
+
+这套规则是**递归的** 👇
+
+```bash
+jq '.items[]
+  | .spec.containers[]   # 再拆一层
+  | .image'
+```
+
+📌 每遇到数组，**想“逐个处理”就加 `[]`**
+
+---
+
+## 八、一张“防晕对照表”（收藏级）
+
+| 写法              | jq 眼里的东西 | SQL 类比 |
+| --------------- | -------- | ------ |
+| `.items`        | 一个数组     | 表      |
+| `.items[]`      | 一条条对象    | 行      |
+| `.containers`   | 容器数组     | 子表     |
+| `.containers[]` | 单个容器     | 子表行    |
+
+---
+
+## 九、一句狠但准的话
+
+> **jq 的 `[]`，不是“取下标”，而是“展开流”**
+
+你一旦用 **“流”** 的角度看 jq，后面所有语法都会自然。
+
+---
+
+如果你愿意，下一步我可以直接带你做：
+
+* 🔥 **复杂 jq 一行命令拆解训练**
+* 🔥 **kubectl + jq 排障实战套路**
+* 🔥 **把你常写的 SQL 翻译成 jq（逐条练）**
+
+你选一个，我带你飞 🚀
+
+
