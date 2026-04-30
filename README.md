@@ -119,7 +119,12 @@ systemctl restart docker
 sudo mkdir -p /etc/docker
 sudo tee /etc/docker/daemon.json <<-'EOF'
 {
-  "registry-mirrors": ["https://o240zio5.mirror.aliyuncs.com"]
+  "registry-mirrors": ["https://o240zio5.mirror.aliyuncs.com"],
+  "proxies": {
+     "http-proxy": "http://192.168.101.51:7890",
+     "https-proxy": "http://192.168.101.51:7890",
+     "no-proxy": "localhost,127.0.0.1,::1,.local,192.168.0.0/16,10.0.0.0/8,172.16.0.0/12,100.64.0.0/10,*.ydphoto.com,ydphoto.com"
+  }
 }
 EOF
 sudo systemctl restart docker
@@ -310,6 +315,114 @@ docker --version
 
 ```shell
 ssh-keyscan -p 22 8.138.212.208 >> /var/jenkins_home/.ssh/known_hosts
+
+```
+### ubuntu 设置固定ip
+
+```shell
+sudo nano /etc/netplan/50-cloud-init.yaml
+network:
+  version: 2
+  ethernets:
+    ens33:
+      critical: true
+      dhcp4: no
+      addresses:
+        - 192.168.101.75/24
+      gateway4: 192.168.101.1
+      nameservers:
+        addresses:
+          - 192.168.101.1
+          - 8.8.8.8
+
+
+sudo netplan apply
+
+
+```
+
+###  gitea
+
+```shell
+docker run -d \
+  --restart=always \
+  -p 3000:3000 \
+  -p 22:22 \
+  --name=gitea \
+  -v /var/lib/gitea:/data \
+  gitea/gitea:latest
+
+```
+
+
+### 基础命令（wsl命令本身）
+
+| 命令                                    | 说明                          |
+| ------------------------------------- | --------------------------- |
+| `wsl`                                 | 进入默认的 WSL 发行版（等价于打开Linux终端） |
+| `wsl -l` 或 `wsl --list`               | 查看已安装的 WSL 发行版              |
+| `wsl -l -v`                           | 查看发行版列表及其版本（WSL 1/2）        |
+| `wsl -s <发行版名>`                       | 设置默认发行版                     |
+| `wsl --set-version <发行版名> <版本号>`      | 设置指定发行版为 WSL 1 或 WSL 2      |
+| `wsl --set-default-version 2`         | 将新安装的发行版默认设置为 WSL 2         |
+| `wsl -t <发行版名>`                       | 终止某个发行版的运行                  |
+| `wsl --shutdown`                      | 停止所有运行中的 WSL 实例（常用于释放内存）    |
+| `wsl --export <发行版名> <文件路径>`          | 导出发行版为 `.tar` 文件（备份）        |
+| `wsl --import <新发行版名> <安装路径> <tar文件>` | 从备份导入一个发行版                  |
+| `wsl --unregister <发行版名>`             | 注销（删除）某个发行版                 |
+| `wsl --status`                        | 查看WSL运行状态（内核版本、默认版本等）       |
+| `wsl --help`                          | 查看命令帮助                      |
+
+### Jenkins 忘记密码
+```shell
+sudo docker exec jenkins bash -c 'mkdir -p /var/jenkins_home/init.groovy.d && cat <<EOF > /var/jenkins_home/init.groovy.d/create-admin.groovy
+#!groovy
+import jenkins.model.*
+import hudson.security.*
+
+def instance = Jenkins.getInstance()
+def hudsonRealm = new HudsonPrivateSecurityRealm(false)
+instance.setSecurityRealm(hudsonRealm)
+hudsonRealm.createAccount("admin2","123456")
+instance.save()
+EOF'
+
+```
+
+然后重启 jenkins 容器，就可以用 admin2/123456 登录了
+```shell
+sudo docker restart jenkins
+
+```
+
+```
+upstream k3s_gateway {
+    server 100.65.10.54:80 max_fails=3 fail_timeout=10s;
+    server 100.87.36.113:80 max_fails=3 fail_timeout=10s;
+}
+
+server {
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
+    server_name *.ydphoto.com; # 使用参数化的API名称
+
+    # 使用 DERP 子域名的专属证书
+    ssl_certificate /etc/ssl/ydphoto.com/fullchain.pem;
+    ssl_certificate_key /etc/ssl/ydphoto.com/privkey.pem;
+
+    location / {
+        proxy_pass http://k3s_gateway; # 使用参数化的IP和端口
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # 这些是 WebSocket 和 HTTP2 协议支持的重要设置，DERP 需要它们
+        # proxy_http_version 1.1;
+        # proxy_set_header Upgrade $http_upgrade;
+        # proxy_set_header Connection "Upgrade";
+    }
+}
 
 ```
 
