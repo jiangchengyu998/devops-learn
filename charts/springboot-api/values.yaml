@@ -11,8 +11,8 @@ autoscaling:
 fullnameOverride: ""
 nameOverride: ""
 
-imagePullSecrets:
-  - name: harbor-registry-secret
+#imagePullSecrets:
+#  - name: harbor-registry-secret
 # restartPolicy: Always
 # Default values for springboot-api.
 # This is a sensible starting point; customize for your environment.
