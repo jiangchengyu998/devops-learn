@@ -19,7 +19,7 @@ nameOverride: ""
 replicaCount: 1
 
 image:
-  repository: 192.168.50.18:5000/API-NAME
+  repository: 192.168.50.18:5001/API-NAME
   tag: "TAG"
   pullPolicy: IfNotPresent
 
