@@ -1,5 +1,5 @@
 route:
-  gatewayName: yd-gateway
+  gatewayName: traefik-gateway
   host: HOSTNAME
 
 autoscaling:

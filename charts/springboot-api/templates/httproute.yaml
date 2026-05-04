@@ -8,6 +8,7 @@ metadata:
 spec:
   parentRefs:
     - name: {{ .Values.route.gatewayName }}
+      namespace: {{ .Values.route.namespace | default "kube-system" }}
   hostnames:
     - {{ .Values.route.host }}
   rules:
