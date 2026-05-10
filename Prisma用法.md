@@ -154,5 +154,30 @@ pnpm prisma generate
 
 ```
 
+
 ⚡ 总结：
 Prisma 的核心流程是 写 schema → 迁移 → 用 Client 调用。你平时写 CRUD 基本都在用 prisma.xxx.findMany()、create()、update()、delete()。
+
+四、典型工作流（推荐）
+
+你以后应该这样：
+
+修改数据库
+
+手动 SQL：
+
+```shell
+ALTER TABLE ...
+
+```
+
+同步 Prisma
+```shell
+npx prisma db pull
+```
+
+更新 Client
+```shell
+npx prisma generate
+```
+这样就能保持数据库和 Prisma Client 的同步，避免出问题。
