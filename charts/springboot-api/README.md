@@ -28,6 +28,10 @@ image:
 container:
   port: 8080
 
+env:
+  - name: SPRING_PROFILES_ACTIVE
+    value: prod
+
 service:
   port: 8080
 

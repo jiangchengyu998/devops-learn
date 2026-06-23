@@ -8,6 +8,8 @@ image:
 container:
   port: 8080
 
+env: []
+
 service:
   port: 8080
 

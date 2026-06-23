@@ -28,6 +28,10 @@ image:
 container:
   port: 80
 
+env:
+  - name: APP_ENV
+    value: prod
+
 service:
   port: 80
 
