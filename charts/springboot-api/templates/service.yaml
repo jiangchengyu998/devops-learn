@@ -5,12 +5,11 @@ metadata:
   labels:
     {{- include "springboot-api.labels" . | nindent 4 }}
 spec:
-  type: {{ .Values.service.type }}
+  type: ClusterIP
   selector:
-    app.kubernetes.io/name: {{ include "springboot-api.fullname" . }}
+    {{- include "springboot-api.selectorLabels" . | nindent 4 }}
   ports:
-    - protocol: TCP
+    - name: http
+      protocol: TCP
       port: {{ .Values.service.port }}
-      targetPort: {{ .Values.service.targetPort }}
-      name: http
-
+      targetPort: http
