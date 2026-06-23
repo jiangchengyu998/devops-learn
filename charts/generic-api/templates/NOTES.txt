@@ -1,0 +1,5 @@
+Release: {{ .Release.Name }}
+Image: {{ .Values.image.repository }}:{{ .Values.image.tag }}
+Host: {{ .Values.route.hostname }}
+
+kubectl get deploy,svc,httproute -n {{ .Release.Namespace }} -l app.kubernetes.io/instance={{ .Release.Name }}

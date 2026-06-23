@@ -1,0 +1,18 @@
+replicaCount: 1
+
+image:
+  repository: 192.168.50.18:5000/API-NAME
+  tag: "latest"
+  pullPolicy: IfNotPresent
+
+container:
+  port: 80
+
+service:
+  port: 80
+
+route:
+  gatewayName: traefik-gateway
+  gatewayNamespace: kube-system
+  hostname: HOSTNAME
+  path: /
