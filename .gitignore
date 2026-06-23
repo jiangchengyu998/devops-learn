@@ -1,0 +1,30 @@
+# macOS
+.DS_Store
+
+# JetBrains IDE
+.idea/
+*.iml
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+*.tmp
+*.temp
+tmp/
+temp/
+
+# Build output
+dist/
+build/
+target/
+out/
+
+# Dependencies
+node_modules/
+
+# Environment files
+.env
+.env.*
+!.env.example
