@@ -1,11 +1,14 @@
-#!/bin/bash
+#!/usr/bin/env bash
+set -euo pipefail
 
-for (( i=1;i<10000;i++ ));
+URL="${URL:-http://192.168.101.102:8083/hello}"
+COUNT="${COUNT:-10000}"
+SLEEP_SECONDS="${SLEEP_SECONDS:-0.1}"
+
+for (( i=1; i<=COUNT; i++ ));
 do
-  # curl http://192.168.101.102:8090/ping
-  # curl http://192.168.101.102:8082/hello
-  curl http://192.168.101.102:8083/hello
+  curl --fail --show-error --silent "$URL"
   echo ""
-  echo "sleep 0.5s"
-  sleep 0.1
+  echo "sleep ${SLEEP_SECONDS}s"
+  sleep "$SLEEP_SECONDS"
 done

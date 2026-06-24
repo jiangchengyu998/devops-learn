@@ -5,16 +5,35 @@ image:
   tag: "TAG"
   pullPolicy: Always
 
+imagePullSecrets: []
+podAnnotations: {}
+podLabels: {}
+
 container:
   port: 8080
 
 env: []
 
+resources: {}
+
+probes:
+  enabled: false
+  path: /actuator/health
+  initialDelaySeconds: 30
+  periodSeconds: 10
+  timeoutSeconds: 3
+  failureThreshold: 3
+
 service:
   port: 8080
 
 route:
+  enabled: true
   gatewayName: traefik-gateway
   gatewayNamespace: kube-system
   hostname: HOSTNAME
   path: /
+
+nodeSelector: {}
+tolerations: []
+affinity: {}

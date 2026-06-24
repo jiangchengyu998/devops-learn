@@ -32,12 +32,45 @@ env:
   - name: SPRING_PROFILES_ACTIVE
     value: prod
 
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: "1"
+    memory: 1Gi
+
+probes:
+  enabled: true
+  path: /actuator/health
+  initialDelaySeconds: 30
+  periodSeconds: 10
+  timeoutSeconds: 3
+  failureThreshold: 3
+
 service:
   port: 8080
 
 route:
+  enabled: true
   gatewayName: traefik-gateway
   gatewayNamespace: kube-system
   hostname: HOSTNAME
   path: /
+```
+
+## 常用覆盖
+
+开启 Spring Boot 健康检查：
+
+```bash
+helm upgrade --install my-api ./charts/springboot-api \
+  --set probes.enabled=true
+```
+
+不需要 Gateway API 路由时可以关闭 `HTTPRoute`：
+
+```bash
+helm upgrade --install my-api ./charts/springboot-api \
+  --set route.enabled=false
 ```

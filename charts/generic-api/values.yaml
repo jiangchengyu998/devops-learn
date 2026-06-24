@@ -5,16 +5,27 @@ image:
   tag: "latest"
   pullPolicy: IfNotPresent
 
+imagePullSecrets: []
+podAnnotations: {}
+podLabels: {}
+
 container:
   port: 80
 
 env: []
 
+resources: {}
+
 service:
   port: 80
 
 route:
+  enabled: true
   gatewayName: traefik-gateway
   gatewayNamespace: kube-system
   hostname: HOSTNAME
   path: /
+
+nodeSelector: {}
+tolerations: []
+affinity: {}

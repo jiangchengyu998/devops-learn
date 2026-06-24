@@ -32,12 +32,30 @@ env:
   - name: APP_ENV
     value: prod
 
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
 service:
   port: 80
 
 route:
+  enabled: true
   gatewayName: traefik-gateway
   gatewayNamespace: kube-system
   hostname: api.example.com
   path: /
+```
+
+## 常用覆盖
+
+不需要 Gateway API 路由时可以关闭 `HTTPRoute`：
+
+```bash
+helm install my-api ./charts/generic-api \
+  --set route.enabled=false
 ```
