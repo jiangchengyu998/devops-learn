@@ -1,0 +1,43 @@
+{{- if .Values.prometheus.serviceMonitor.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "generic-api.fullname" . }}
+  {{- if .Values.prometheus.serviceMonitor.namespace }}
+  namespace: {{ .Values.prometheus.serviceMonitor.namespace }}
+  {{- end }}
+  labels:
+    {{- include "generic-api.labels" . | nindent 4 }}
+    {{- with .Values.prometheus.serviceMonitor.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  {{- with .Values.prometheus.serviceMonitor.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "generic-api.selectorLabels" . | nindent 6 }}
+  namespaceSelector:
+    {{- if .Values.prometheus.serviceMonitor.namespaceSelector }}
+    {{- toYaml .Values.prometheus.serviceMonitor.namespaceSelector | nindent 4 }}
+    {{- else }}
+    matchNames:
+      - {{ .Release.Namespace }}
+    {{- end }}
+  endpoints:
+    - port: {{ .Values.prometheus.port }}
+      path: {{ .Values.prometheus.path }}
+      interval: {{ .Values.prometheus.interval }}
+      scrapeTimeout: {{ .Values.prometheus.scrapeTimeout }}
+      scheme: {{ .Values.prometheus.scheme }}
+      {{- with .Values.prometheus.serviceMonitor.relabelings }}
+      relabelings:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.prometheus.serviceMonitor.metricRelabelings }}
+      metricRelabelings:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}
