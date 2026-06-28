@@ -26,6 +26,24 @@ probes:
 
 service:
   port: API_PORT
+  annotations: {}
+
+prometheus:
+  path: /actuator/prometheus
+  port: http
+  interval: 30s
+  scrapeTimeout: 10s
+  scheme: http
+  annotations:
+    enabled: false
+  serviceMonitor:
+    enabled: true
+    namespace: ""
+    namespaceSelector: {}
+    labels: {}
+    annotations: {}
+    relabelings: []
+    metricRelabelings: []
 
 route:
   enabled: true

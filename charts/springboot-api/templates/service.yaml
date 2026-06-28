@@ -4,6 +4,17 @@ metadata:
   name: {{ include "springboot-api.fullname" . }}
   labels:
     {{- include "springboot-api.labels" . | nindent 4 }}
+  {{- if or .Values.service.annotations .Values.prometheus.annotations.enabled }}
+  annotations:
+    {{- with .Values.service.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+    {{- if .Values.prometheus.annotations.enabled }}
+    prometheus.io/scrape: "true"
+    prometheus.io/path: {{ .Values.prometheus.path | quote }}
+    prometheus.io/port: {{ .Values.service.port | quote }}
+    {{- end }}
+  {{- end }}
 spec:
   type: ClusterIP
   selector:
