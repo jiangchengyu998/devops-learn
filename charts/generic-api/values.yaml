@@ -10,7 +10,7 @@ podAnnotations: {}
 podLabels: {}
 
 container:
-  port: 80
+  port: CONTAINER_PORT
 
 env: []
 
