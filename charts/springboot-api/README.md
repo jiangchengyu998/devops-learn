@@ -62,7 +62,7 @@ prometheus:
   annotations:
     enabled: false
   serviceMonitor:
-    enabled: false
+    enabled: true
     namespace: ""
     namespaceSelector: {}
     labels: {}
