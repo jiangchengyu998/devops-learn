@@ -49,6 +49,27 @@ probes:
   timeoutSeconds: 3
   failureThreshold: 3
 
+otelJavaAgent:
+  enabled: false
+  serviceName: my-api
+  collector:
+    endpoint: http://otel-collector.opentelemetry:4317
+    protocol: grpc
+  exporters:
+    traces: otlp
+    metrics: otlp
+    logs: otlp
+  resourceAttributes: ""
+  image:
+    repository: ghcr.io/open-telemetry/opentelemetry-operator/autoinstrumentation-java
+    tag: latest
+    pullPolicy: IfNotPresent
+  sourcePath: /javaagent.jar
+  mountPath: /otel-auto-instrumentation
+  fileName: javaagent.jar
+  javaToolOptions: ""
+  resources: {}
+
 service:
   port: 8080
   annotations: {}
@@ -100,6 +121,20 @@ helm upgrade --install my-api ./charts/springboot-api \
 helm upgrade --install my-api ./charts/springboot-api \
   --set prometheus.serviceMonitor.enabled=true \
   --set prometheus.path=/api/metrics
+```
+
+开启 OpenTelemetry Java Agent：
+
+```bash
+helm upgrade --install my-api ./charts/springboot-api \
+  --set otelJavaAgent.enabled=true \
+  --set otelJavaAgent.serviceName=my-api
+```
+
+开启后 chart 会增加一个 init container，把 `/javaagent.jar` 复制到共享的 `emptyDir`，并给应用容器注入：
+
+```yaml
+JAVA_TOOL_OPTIONS: -javaagent:/otel-auto-instrumentation/javaagent.jar
 ```
 
 如果集群使用传统 Prometheus 注解抓取，也可以只打开 Service 注解：

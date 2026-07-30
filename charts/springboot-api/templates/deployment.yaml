@@ -25,6 +25,23 @@ spec:
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      {{- if .Values.otelJavaAgent.enabled }}
+      initContainers:
+        - name: otel-java-agent
+          image: "{{ .Values.otelJavaAgent.image.repository }}:{{ .Values.otelJavaAgent.image.tag }}"
+          imagePullPolicy: {{ .Values.otelJavaAgent.image.pullPolicy }}
+          command:
+            - cp
+            - {{ .Values.otelJavaAgent.sourcePath }}
+            - {{ .Values.otelJavaAgent.mountPath }}/{{ .Values.otelJavaAgent.fileName }}
+          volumeMounts:
+            - name: otel-java-agent
+              mountPath: {{ .Values.otelJavaAgent.mountPath }}
+          {{- with .Values.otelJavaAgent.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      {{- end }}
       containers:
         - name: app
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
@@ -33,9 +50,36 @@ spec:
             - name: http
               containerPort: {{ .Values.container.port }}
               protocol: TCP
-          {{- with .Values.env }}
+          {{- if .Values.otelJavaAgent.enabled }}
+          volumeMounts:
+            - name: otel-java-agent
+              mountPath: {{ .Values.otelJavaAgent.mountPath }}
+          {{- end }}
+          {{- if or .Values.env .Values.otelJavaAgent.enabled }}
           env:
+            {{- if .Values.otelJavaAgent.enabled }}
+            - name: JAVA_TOOL_OPTIONS
+              value: "-javaagent:{{ .Values.otelJavaAgent.mountPath }}/{{ .Values.otelJavaAgent.fileName }}{{- with .Values.otelJavaAgent.javaToolOptions }} {{ . }}{{- end }}"
+            - name: OTEL_SERVICE_NAME
+              value: {{ .Values.otelJavaAgent.serviceName | quote }}
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: {{ .Values.otelJavaAgent.collector.endpoint | quote }}
+            - name: OTEL_EXPORTER_OTLP_PROTOCOL
+              value: {{ .Values.otelJavaAgent.collector.protocol | quote }}
+            - name: OTEL_TRACES_EXPORTER
+              value: {{ .Values.otelJavaAgent.exporters.traces | quote }}
+            - name: OTEL_METRICS_EXPORTER
+              value: {{ .Values.otelJavaAgent.exporters.metrics | quote }}
+            - name: OTEL_LOGS_EXPORTER
+              value: {{ .Values.otelJavaAgent.exporters.logs | quote }}
+            {{- with .Values.otelJavaAgent.resourceAttributes }}
+            - name: OTEL_RESOURCE_ATTRIBUTES
+              value: {{ . | quote }}
+            {{- end }}
+            {{- end }}
+          {{- with .Values.env }}
             {{- toYaml . | nindent 12 }}
+          {{- end }}
           {{- end }}
           {{- if .Values.probes.enabled }}
           readinessProbe:
@@ -59,6 +103,11 @@ spec:
           resources:
             {{- toYaml . | nindent 12 }}
           {{- end }}
+      {{- if .Values.otelJavaAgent.enabled }}
+      volumes:
+        - name: otel-java-agent
+          emptyDir: {}
+      {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

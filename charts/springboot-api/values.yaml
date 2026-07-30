@@ -30,6 +30,27 @@ probes:
   timeoutSeconds: 3
   failureThreshold: 3
 
+otelJavaAgent:
+  enabled: true
+  serviceName: API-NAME
+  collector:
+    endpoint: http://opentelemetry-collector.observability.svc.cluster.local:4317
+    protocol: grpc
+  exporters:
+    traces: otlp
+    metrics: otlp
+    logs: otlp
+  resourceAttributes: ""
+  image:
+    repository: ghcr.io/open-telemetry/opentelemetry-operator/autoinstrumentation-java
+    tag: latest
+    pullPolicy: IfNotPresent
+  sourcePath: /javaagent.jar
+  mountPath: /otel-auto-instrumentation
+  fileName: javaagent.jar
+  javaToolOptions: ""
+  resources: {}
+
 service:
   port: API_PORT
   annotations: {}
