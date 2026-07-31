@@ -40,6 +40,9 @@ otelJavaAgent:
     traces: otlp
     metrics: otlp
     logs: otlp
+  logCorrelation:
+    enabled: true
+    patternLevel: "%5p [trace_id=%X{trace_id:-},span_id=%X{span_id:-}]"
   resourceAttributes: ""
   image:
     repository: ghcr.io/open-telemetry/opentelemetry-operator/autoinstrumentation-java

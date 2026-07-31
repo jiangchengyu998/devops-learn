@@ -50,15 +50,18 @@ probes:
   failureThreshold: 3
 
 otelJavaAgent:
-  enabled: false
+  enabled: true
   serviceName: my-api
   collector:
-    endpoint: http://otel-collector.opentelemetry:4317
+    endpoint: http://opentelemetry-collector.observability.svc.cluster.local:4317
     protocol: grpc
   exporters:
     traces: otlp
     metrics: otlp
     logs: otlp
+  logCorrelation:
+    enabled: true
+    patternLevel: "%5p [trace_id=%X{trace_id:-},span_id=%X{span_id:-}]"
   resourceAttributes: ""
   image:
     repository: ghcr.io/open-telemetry/opentelemetry-operator/autoinstrumentation-java
@@ -130,6 +133,14 @@ helm upgrade --install my-api ./charts/springboot-api \
   --set otelJavaAgent.enabled=true \
   --set otelJavaAgent.serviceName=my-api
 ```
+
+开启后，chart 会同时设置 Logback MDC 关联日志，业务请求日志里会出现类似：
+
+```text
+INFO [trace_id=...,span_id=...] ... ItemService.list page=35 size=10 totalElements=6420
+```
+
+注意：应用启动阶段的日志通常还没有请求 span，所以启动日志里没有 traceId 是正常的；访问接口后的业务日志才应该带 traceId。
 
 开启后 chart 会增加一个 init container，把 `/javaagent.jar` 复制到共享的 `emptyDir`，并给应用容器注入：
 

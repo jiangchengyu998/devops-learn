@@ -72,6 +72,12 @@ spec:
               value: {{ .Values.otelJavaAgent.exporters.metrics | quote }}
             - name: OTEL_LOGS_EXPORTER
               value: {{ .Values.otelJavaAgent.exporters.logs | quote }}
+            {{- if .Values.otelJavaAgent.logCorrelation.enabled }}
+            - name: OTEL_INSTRUMENTATION_LOGBACK_MDC_ENABLED
+              value: "true"
+            - name: LOGGING_PATTERN_LEVEL
+              value: {{ .Values.otelJavaAgent.logCorrelation.patternLevel | quote }}
+            {{- end }}
             {{- with .Values.otelJavaAgent.resourceAttributes }}
             - name: OTEL_RESOURCE_ATTRIBUTES
               value: {{ . | quote }}
