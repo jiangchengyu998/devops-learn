@@ -1,0 +1,2012 @@
+# Istio Ambient 系统学习笔记
+
+> 基于当前对话整理  
+> 主题：Istio、Ambient Mesh、ztunnel、Waypoint、Ingress Gateway、Gateway API、Retry/Timeout、Egress
+
+---
+
+## 目录
+
+1. [学习路线](#1-学习路线)
+2. [Istio 为什么存在](#2-istio-为什么存在)
+3. [控制平面与数据平面](#3-控制平面与数据平面)
+4. [istiod、xDS 与 Envoy](#4-istiodxds-与-envoy)
+5. [Ambient 模式整体架构](#5-ambient-模式整体架构)
+6. [Ambient 如何拦截 Pod 流量](#6-ambient-如何拦截-pod-流量)
+7. [ztunnel 与 HBONE](#7-ztunnel-与-hbone)
+8. [ServiceAccount、SPIFFE、mTLS 与 AuthorizationPolicy](#8-serviceaccountspiffemtls-与-authorizationpolicy)
+9. [Waypoint](#9-waypoint)
+10. [Ingress Gateway](#10-ingress-gateway)
+11. [完整 Ingress Gateway → HTTP API 示例](#11-完整-ingress-gateway--http-api-示例)
+12. [为什么 Ingress 默认不经过 Waypoint](#12-为什么-ingress-默认不经过-waypoint)
+13. [Waypoint 配置 Retry / Timeout](#13-waypoint-配置-retry--timeout)
+14. [GatewayClass / Gateway / HTTPRoute / Service 的关系](#14-gatewayclass--gateway--httproute--service-的关系)
+15. [Egress](#15-egress)
+16. [最终总览图](#16-最终总览图)
+
+---
+
+# 1. 学习路线
+
+建议学习顺序：
+
+```text
+Istio 核心架构
+   ↓
+Sidecar 模式
+   ↓
+Ambient 核心
+   ↓
+ztunnel / HBONE / CNI
+   ↓
+SPIFFE / mTLS / AuthorizationPolicy
+   ↓
+Waypoint
+   ↓
+Gateway API
+   ↓
+Ingress Gateway
+   ↓
+Retry / Timeout / Traffic Split
+   ↓
+Egress
+   ↓
+Observability / Production
+```
+
+核心目标不是“会写 YAML”，而是每个知识点都回答：
+
+```text
+① 它解决什么问题？
+② 没有它流量怎么走？
+③ 加上它后流量怎么走？
+④ istiod 下发了什么？
+⑤ ztunnel / Envoy 做了什么？
+⑥ 怎么验证？
+⑦ 怎么排查？
+```
+
+---
+
+# 2. Istio 为什么存在
+
+Kubernetes 已经解决了：
+
+```text
+Service Discovery
+DNS
+ClusterIP
+Pod Endpoint
+基础 L4 负载均衡
+```
+
+但当你需要：
+
+```text
+90% → v1
+10% → v2
+
+Retry
+Timeout
+Circuit Breaking
+mTLS
+Authorization
+Tracing
+Metrics
+```
+
+如果全部写进业务代码，就会变成：
+
+```text
+Java 服务
+ ├── retry
+ ├── timeout
+ ├── TLS
+ ├── metrics
+ └── tracing
+
+Go 服务
+ ├── retry
+ ├── timeout
+ ├── TLS
+ ├── metrics
+ └── tracing
+```
+
+Service Mesh 的核心思想：
+
+> 把与业务无关的网络治理能力，从业务代码中抽离出来。
+
+---
+
+# 3. 控制平面与数据平面
+
+Istio 分为：
+
+```text
+             Istio
+               │
+       ┌───────┴───────┐
+       │               │
+Control Plane       Data Plane
+       │               │
+    istiod           proxy
+```
+
+控制平面：
+
+```text
+决定应该怎么做
+```
+
+数据平面：
+
+```text
+真正处理每一个请求
+```
+
+## 3.1 istiod
+
+可以先记成：
+
+```text
+istiod = 大脑
+```
+
+负责：
+
+```text
+Service Discovery
+配置计算
+证书管理
+Proxy 配置下发
+```
+
+重要：
+
+```text
+业务流量不会经过 istiod
+```
+
+错误：
+
+```text
+order
+ ↓
+istiod
+ ↓
+payment
+```
+
+正确：
+
+```text
+                 istiod
+                   │
+                下发配置
+                   ↓
+
+order → Data Plane → payment
+```
+
+---
+
+# 4. istiod、xDS 与 Envoy
+
+传统 Sidecar 模式：
+
+```text
+App A
+ ↓
+Envoy A
+ ↓
+Envoy B
+ ↓
+App B
+```
+
+Envoy 负责真正执行：
+
+```text
+mTLS
+Retry
+Timeout
+Load Balance
+Route
+Authorization
+Telemetry
+```
+
+但 Envoy 自己不知道：
+
+```text
+有哪些服务？
+有哪些 Endpoint？
+90/10 怎么分？
+timeout 多久？
+```
+
+所以需要：
+
+```text
+istiod
+   │
+   │ xDS
+   ▼
+Envoy
+```
+
+## 4.1 xDS
+
+可以理解成 Envoy 动态配置 API 家族：
+
+```text
+LDS = Listener Discovery Service
+RDS = Route Discovery Service
+CDS = Cluster Discovery Service
+EDS = Endpoint Discovery Service
+SDS = Secret Discovery Service
+```
+
+请求处理模型：
+
+```text
+HTTP Request
+      │
+      ▼
+┌─────────────┐
+│  Listener   │ ← LDS
+└──────┬──────┘
+       ↓
+┌─────────────┐
+│    Route    │ ← RDS
+└──────┬──────┘
+       ↓
+┌─────────────┐
+│   Cluster   │ ← CDS
+└──────┬──────┘
+       ↓
+┌─────────────┐
+│  Endpoint   │ ← EDS
+└──────┬──────┘
+       ↓
+     Pod
+```
+
+最重要的四句话：
+
+```text
+istiod = 算配置
+
+xDS = 发配置
+
+proxy = 执行配置
+
+业务流量不经过 istiod
+```
+
+---
+
+# 5. Ambient 模式整体架构
+
+传统 Sidecar：
+
+```text
+Pod A                         Pod B
+┌─────────────┐             ┌─────────────┐
+│ Application │             │ Application │
+│ Envoy       │ ──────────> │ Envoy       │
+└─────────────┘             └─────────────┘
+```
+
+Ambient：
+
+```text
+Pod A                         Pod B
+  │                             ▲
+  ▼                             │
+ztunnel A ===== HBONE ===== ztunnel B
+```
+
+## 5.1 Ambient 两层架构
+
+```text
+                 Ambient
+                    │
+          ┌─────────┴─────────┐
+          │                   │
+        L4                   L7
+          │                   │
+       ztunnel             waypoint
+```
+
+ztunnel：
+
+```text
+mTLS
+Identity
+L4 AuthorizationPolicy
+TCP telemetry
+HBONE
+```
+
+Waypoint：
+
+```text
+HTTPRoute
+Retry
+Timeout
+Traffic Split
+HTTP Authorization
+HTTP Metrics
+Tracing
+```
+
+核心记忆：
+
+> ztunnel = L4  
+> Waypoint = L7
+
+---
+
+# 6. Ambient 如何拦截 Pod 流量
+
+Pod 本身没有 Sidecar，那么流量为什么会进 ztunnel？
+
+答案：
+
+```text
+Istio CNI
+   ↓
+进入 Pod Network Namespace
+   ↓
+配置流量重定向
+   ↓
+ztunnel 在 Pod netns 中创建 socket
+   ↓
+Pod TCP 流量透明进入 ztunnel
+```
+
+## 6.1 Network Namespace
+
+每个 Pod 有自己的网络空间：
+
+```text
+Pod A Network Namespace
+
+┌────────────────────────────┐
+│ eth0                       │
+│ routing table              │
+│ iptables / netfilter       │
+│ sockets                    │
+│ Application                │
+└────────────────────────────┘
+```
+
+应用：
+
+```text
+socket()
+ ↓
+connect()
+ ↓
+TCP/IP stack
+ ↓
+Pod netns
+```
+
+Ambient 就在这个路径中拦截。
+
+## 6.2 Istio CNI
+
+在 K3s 中：
+
+```text
+Flannel
++
+Istio CNI
+```
+
+Istio CNI 不是替代主 CNI。
+
+## 6.3 关键端口
+
+```text
+15001 = outbound → ztunnel
+15006 = inbound plaintext
+15008 = inbound HBONE
+```
+
+粗略理解：
+
+```text
+Application
+   ↓
+iptables/netfilter
+   ↓
+15001
+   ↓
+ztunnel
+```
+
+---
+
+# 7. ztunnel 与 HBONE
+
+ztunnel 进程是 Node 级别共享的：
+
+```text
+Node
+
+Pod A
+Pod B
+Pod C
+ztunnel
+```
+
+但 ztunnel 可以在不同 Pod 的 Network Namespace 内创建监听 socket。
+
+```text
+                 ztunnel process
+                       │
+        ┌──────────────┼─────────────┐
+        ▼              ▼             ▼
+
+Pod A netns       Pod B netns      Pod C netns
+
+15001             15001           15001
+15006             15006           15006
+15008             15008           15008
+```
+
+## 7.1 HBONE
+
+HBONE：
+
+```text
+HTTP-Based Overlay Network Environment
+```
+
+可以粗略理解为：
+
+```text
+HTTP/2
++
+HTTP CONNECT
++
+mTLS
+```
+
+数据路径：
+
+```text
+Pod A
+ ↓
+source ztunnel
+ ↓
+HBONE + mTLS
+ ↓
+destination ztunnel
+ ↓
+Pod B
+```
+
+HBONE 利用了 HTTP/2 multiplexing：
+
+```text
+ztunnel A ====================== ztunnel B
+               HTTP/2
+
+               ├── stream 1
+               ├── stream 2
+               └── stream 3
+```
+
+---
+
+# 8. ServiceAccount、SPIFFE、mTLS 与 AuthorizationPolicy
+
+Istio 不喜欢只通过 IP 判断身份。
+
+因为：
+
+```text
+Pod IP
+重启会变
+扩容会变
+迁移会变
+```
+
+Kubernetes 已经有天然身份：
+
+```text
+ServiceAccount
+```
+
+例如：
+
+```yaml
+spec:
+  template:
+    spec:
+      serviceAccountName: order
+```
+
+得到：
+
+```text
+namespace = shop
+serviceAccount = order
+```
+
+## 8.1 SPIFFE Identity
+
+典型身份：
+
+```text
+spiffe://cluster.local/ns/shop/sa/order
+```
+
+拆开：
+
+```text
+cluster.local = trust domain
+shop          = namespace
+order         = ServiceAccount
+```
+
+可以理解成：
+
+> workload 身份证号码
+
+## 8.2 X.509 Certificate
+
+只有 SPIFFE 字符串不够，需要 CA 证明身份。
+
+```text
+ServiceAccount
+      ↓
+SPIFFE Identity
+      ↓
+X.509 Certificate
+      ↓
+mTLS
+```
+
+Ambient 中：
+
+```text
+ztunnel 共享
+但 workload identity 不共享
+```
+
+例如一个 Node：
+
+```text
+order       → order cert
+payment     → payment cert
+inventory   → inventory cert
+```
+
+ztunnel 会代表不同 workload 使用各自证书。
+
+## 8.3 Authentication 与 Authorization
+
+```text
+Authentication
+=
+你是谁？
+
+Authorization
+=
+你能做什么？
+```
+
+mTLS 解决：
+
+```text
+加密
++
+双向身份认证
+```
+
+AuthorizationPolicy 解决：
+
+```text
+谁允许访问谁
+```
+
+例子：
+
+```yaml
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: payment-policy
+  namespace: shop
+spec:
+  selector:
+    matchLabels:
+      app: payment
+  action: ALLOW
+  rules:
+  - from:
+    - source:
+        serviceAccounts:
+        - shop/order
+```
+
+表示：
+
+```text
+只有 shop/order
+允许访问 payment
+```
+
+## 8.4 PeerAuthentication
+
+```yaml
+apiVersion: security.istio.io/v1
+kind: PeerAuthentication
+metadata:
+  name: default
+  namespace: shop
+spec:
+  mtls:
+    mode: STRICT
+```
+
+作用：
+
+```text
+进入 workload 的连接必须使用 mTLS
+```
+
+---
+
+# 9. Waypoint
+
+Waypoint 本质上通常还是 Envoy：
+
+```text
+Waypoint = Envoy L7 Proxy
+```
+
+区别不是 Proxy 类型，而是部署模型。
+
+Sidecar：
+
+```text
+1 Pod ≈ 1 Envoy
+```
+
+Ambient：
+
+```text
+1 Node → ztunnel
+按需 → waypoint
+```
+
+## 9.1 为什么 Waypoint 更偏“目标端”
+
+假设：
+
+```text
+frontend → payment
+```
+
+payment 声明使用 waypoint：
+
+```text
+frontend
+   ↓
+ztunnel
+   ↓
+payment-waypoint
+   ↓
+payment
+```
+
+Waypoint 更像：
+
+> payment 前面的一扇门
+
+多个调用者：
+
+```text
+frontend ──────┐
+order ─────────┤
+inventory ─────┤
+               ▼
+       payment-waypoint
+               ↓
+            payment
+```
+
+## 9.2 创建 Waypoint
+
+```yaml
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: api-waypoint
+  namespace: app
+spec:
+  gatewayClassName: istio-waypoint
+```
+
+或者：
+
+```bash
+istioctl waypoint apply \
+  -n app \
+  --name api-waypoint
+```
+
+## 9.3 Service 绑定 Waypoint
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: deployment-api
+  namespace: app
+  labels:
+    istio.io/use-waypoint: api-waypoint
+```
+
+数据路径：
+
+```text
+order
+ ↓
+ztunnel
+ ↓
+api-waypoint
+ ↓
+ztunnel
+ ↓
+deployment-api
+```
+
+---
+
+# 10. Ingress Gateway
+
+Ingress Gateway：
+
+> 外部流量进入 Mesh/Kubernetes 的统一入口代理。
+
+```text
+Internet
+   ↓
+Ingress Gateway
+   ↓
+Service
+```
+
+属于：
+
+```text
+North-South Traffic
+```
+
+而：
+
+```text
+ztunnel / waypoint
+```
+
+主要用于：
+
+```text
+East-West Traffic
+```
+
+## 10.1 Ingress Gateway 本质
+
+通常也是：
+
+```text
+Envoy
+```
+
+所以：
+
+```text
+Sidecar        → Envoy
+Waypoint       → Envoy
+Ingress Gateway→ Envoy
+```
+
+角色不同。
+
+## 10.2 Cloud LoadBalancer 与 Ingress Gateway
+
+```text
+Internet
+   ↓
+Cloud LoadBalancer
+   ↓
+K8s Service
+   ↓
+Istio Ingress Gateway
+   ↓
+Backend
+```
+
+Cloud LoadBalancer 解决：
+
+```text
+外部网络怎么进入集群
+```
+
+Ingress Gateway 解决：
+
+```text
+进来之后 HTTP/TCP 怎么处理
+```
+
+---
+
+# 11. 完整 Ingress Gateway → HTTP API 示例
+
+目标：
+
+```text
+Internet HTTPS
+      ↓
+Istio Ingress Gateway
+      ↓
+HTTPRoute
+      ↓
+deployment-api Service :8080
+      ↓
+Ambient workload
+      ↓
+Pod :8080 HTTP
+```
+
+目录：
+
+```text
+istio-demo/
+├── 00-namespace.yaml
+├── 01-api.yaml
+├── 02-gateway.yaml
+├── 03-http-redirect.yaml
+├── 04-api-route.yaml
+├── 05-security.yaml
+└── 06-gateway-ha.yaml
+```
+
+## 11.1 00-namespace.yaml
+
+```yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: istio-ingress
+
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: app
+  labels:
+    istio.io/dataplane-mode: ambient
+    gateway-access: "true"
+```
+
+## 11.2 01-api.yaml
+
+```yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: deployment-api
+  namespace: app
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: deployment-api-nginx
+  namespace: app
+data:
+  default.conf: |
+    server {
+        listen 8080;
+
+        default_type application/json;
+
+        location = /healthz {
+            return 200 '{"status":"ok"}';
+        }
+
+        location /api/orders {
+            return 200 '{"service":"deployment-api","message":"orders api","path":"$uri"}';
+        }
+
+        location / {
+            return 404 '{"error":"not found"}';
+        }
+    }
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: deployment-api
+  namespace: app
+spec:
+  replicas: 2
+
+  selector:
+    matchLabels:
+      app: deployment-api
+
+  template:
+    metadata:
+      labels:
+        app: deployment-api
+
+    spec:
+      serviceAccountName: deployment-api
+
+      containers:
+      - name: api
+        image: nginx:1.27-alpine
+
+        ports:
+        - name: http
+          containerPort: 8080
+
+        volumeMounts:
+        - name: nginx-config
+          mountPath: /etc/nginx/conf.d/default.conf
+          subPath: default.conf
+
+        readinessProbe:
+          httpGet:
+            path: /healthz
+            port: 8080
+
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 8080
+
+      volumes:
+      - name: nginx-config
+        configMap:
+          name: deployment-api-nginx
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: deployment-api
+  namespace: app
+spec:
+  type: ClusterIP
+
+  selector:
+    app: deployment-api
+
+  ports:
+  - name: http
+    port: 8080
+    targetPort: 8080
+```
+
+## 11.3 TLS Secret
+
+实验环境：
+
+```bash
+openssl req \
+  -x509 \
+  -nodes \
+  -days 365 \
+  -newkey rsa:2048 \
+  -keyout api.example.com.key \
+  -out api.example.com.crt \
+  -subj "/CN=api.example.com" \
+  -addext "subjectAltName=DNS:api.example.com"
+```
+
+创建 Secret：
+
+```bash
+kubectl create secret tls api-example-com-tls \
+  --cert=api.example.com.crt \
+  --key=api.example.com.key \
+  -n istio-ingress
+```
+
+生产建议：
+
+```text
+cert-manager + Let's Encrypt / 企业 CA
+```
+
+## 11.4 02-gateway.yaml
+
+```yaml
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: public-gateway
+  namespace: istio-ingress
+
+spec:
+  gatewayClassName: istio
+
+  listeners:
+
+  - name: http
+    hostname: "api.example.com"
+    port: 80
+    protocol: HTTP
+
+    allowedRoutes:
+      namespaces:
+        from: Selector
+        selector:
+          matchLabels:
+            gateway-access: "true"
+
+  - name: https
+    hostname: "api.example.com"
+    port: 443
+    protocol: HTTPS
+
+    tls:
+      mode: Terminate
+      certificateRefs:
+      - group: ""
+        kind: Secret
+        name: api-example-com-tls
+
+    allowedRoutes:
+      namespaces:
+        from: Selector
+        selector:
+          matchLabels:
+            gateway-access: "true"
+```
+
+关键：
+
+```yaml
+gatewayClassName: istio
+```
+
+表示普通 Istio Gateway。
+
+## 11.5 03-http-redirect.yaml
+
+```yaml
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: http-to-https
+  namespace: app
+
+spec:
+  parentRefs:
+  - group: gateway.networking.k8s.io
+    kind: Gateway
+    name: public-gateway
+    namespace: istio-ingress
+    sectionName: http
+
+  hostnames:
+  - "api.example.com"
+
+  rules:
+  - filters:
+    - type: RequestRedirect
+      requestRedirect:
+        scheme: https
+        port: 443
+        statusCode: 301
+```
+
+## 11.6 04-api-route.yaml
+
+```yaml
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: deployment-api
+  namespace: app
+
+spec:
+  parentRefs:
+  - group: gateway.networking.k8s.io
+    kind: Gateway
+    name: public-gateway
+    namespace: istio-ingress
+    sectionName: https
+
+  hostnames:
+  - "api.example.com"
+
+  rules:
+  - matches:
+    - path:
+        type: PathPrefix
+        value: /api
+
+    backendRefs:
+    - group: ""
+      kind: Service
+      name: deployment-api
+      port: 8080
+      weight: 1
+```
+
+这里：
+
+```text
+Gateway
+=
+门在哪里
+
+HTTPRoute
+=
+进门以后往哪里走
+```
+
+---
+
+# 12. 为什么 Ingress 默认不经过 Waypoint
+
+这是一个很关键的点。
+
+如果：
+
+```text
+payment Service
+  ↓
+istio.io/use-waypoint: payment-waypoint
+```
+
+内部：
+
+```text
+order
+ ↓
+ztunnel
+ ↓
+payment-waypoint
+ ↓
+payment
+```
+
+默认成立。
+
+但公网：
+
+```text
+Internet
+ ↓
+Ingress Gateway
+ ↓
+payment
+```
+
+默认不会因为 `use-waypoint` 自动经过 payment-waypoint。
+
+原因：
+
+```text
+Ingress Gateway 已经是 L7 Envoy
+```
+
+可以处理：
+
+```text
+TLS
+Host
+Path
+HTTPRoute
+Header
+```
+
+如果简单公网流量又强制走 Waypoint：
+
+```text
+Ingress Envoy
+ ↓
+Waypoint Envoy
+```
+
+会多一层 L7 Proxy。
+
+## 12.1 什么时候应该让 Ingress 经过 Waypoint
+
+当你要求：
+
+> 不管请求来自 Internet 还是 Mesh 内部，都必须经过 payment 自己的 L7 Policy。
+
+就可以考虑：
+
+```text
+Internet
+ ↓
+Ingress Gateway
+ ↓
+payment-waypoint
+ ↓
+payment
+```
+
+于是：
+
+```text
+Ingress Gateway
+=
+Mesh 边界
+
+Waypoint
+=
+Service 自己的 L7 边界
+```
+
+---
+
+# 13. Waypoint 配置 Retry / Timeout
+
+目标：
+
+```text
+order-service
+     ↓
+ztunnel
+     ↓
+deployment-api-waypoint
+     ↓
+deployment-api
+```
+
+Retry / Timeout 由：
+
+```text
+Waypoint Envoy
+```
+
+执行。
+
+## 13.1 创建 Waypoint
+
+```yaml
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: deployment-api-waypoint
+  namespace: app
+spec:
+  gatewayClassName: istio-waypoint
+```
+
+## 13.2 Service 绑定 Waypoint
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: deployment-api
+  namespace: app
+  labels:
+    istio.io/use-waypoint: deployment-api-waypoint
+spec:
+  selector:
+    app: deployment-api
+  ports:
+  - name: http
+    port: 8080
+    targetPort: 8080
+```
+
+## 13.3 Mesh HTTPRoute
+
+```yaml
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: deployment-api-mesh-route
+  namespace: app
+
+spec:
+  parentRefs:
+  - group: ""
+    kind: Service
+    name: deployment-api
+    port: 8080
+
+  rules:
+  - backendRefs:
+    - group: ""
+      kind: Service
+      name: deployment-api
+      port: 8080
+
+    timeouts:
+      request: 10s
+      backendRequest: 2s
+
+    retry:
+      codes:
+      - 500
+      - 502
+      - 503
+      - 504
+
+      attempts: 2
+      backoff: 200ms
+```
+
+关键：
+
+```yaml
+parentRefs:
+- kind: Service
+  name: deployment-api
+```
+
+表示：
+
+> 这条 Route 是 deployment-api Service 的 Mesh L7 配置。
+
+真正执行：
+
+```text
+deployment-api 对应的 Waypoint
+```
+
+## 13.4 Timeout
+
+```yaml
+timeouts:
+  request: 10s
+  backendRequest: 2s
+```
+
+解释：
+
+```text
+backendRequest
+=
+每一次调用 backend 最多等多久
+
+request
+=
+整个请求，包括 retry 在内最多多久
+```
+
+例：
+
+```text
+Attempt #1
+ ↓
+Pod A
+ ↓
+2 秒 timeout
+
+retry
+
+Attempt #2
+ ↓
+Pod B
+ ↓
+200 OK
+```
+
+## 13.5 attempts
+
+```yaml
+attempts: 2
+```
+
+含义：
+
+```text
+初始请求 1 次
++
+最多 retry 2 次
+=
+最多 3 次 backend request
+```
+
+## 13.6 Retry 风险
+
+不要随便对非幂等接口 retry：
+
+```text
+POST /payment
+POST /create-order
+POST /send-message
+```
+
+因为：
+
+```text
+第一次实际上已经成功
+但 response 丢了
+ ↓
+Waypoint retry
+ ↓
+重复执行
+```
+
+更适合：
+
+```text
+GET
+HEAD
+幂等 PUT
+支持 Idempotency-Key 的 API
+```
+
+---
+
+# 14. GatewayClass / Gateway / HTTPRoute / Service 的关系
+
+## 14.1 GatewayClass
+
+类似：
+
+```text
+StorageClass
+```
+
+例如：
+
+```text
+GatewayClass: istio
+GatewayClass: istio-waypoint
+```
+
+区别：
+
+```text
+gatewayClassName: istio
+        ↓
+Ingress / Egress Gateway
+
+gatewayClassName: istio-waypoint
+        ↓
+Ambient Waypoint
+```
+
+## 14.2 HTTPRoute 的执行位置由 parentRefs 决定
+
+### 模式 A：挂到 Ingress Gateway
+
+```yaml
+parentRefs:
+- kind: Gateway
+  name: public-gateway
+```
+
+执行者：
+
+```text
+Ingress Gateway Envoy
+```
+
+用于：
+
+```text
+外部入口
+Host
+Path
+TLS 后的 HTTP routing
+```
+
+### 模式 B：挂到 Service
+
+```yaml
+parentRefs:
+- kind: Service
+  name: deployment-api
+```
+
+执行者：
+
+```text
+deployment-api 对应 Waypoint
+```
+
+用于：
+
+```text
+Mesh 内部 L7
+Retry
+Timeout
+Canary
+L7 Authorization
+```
+
+### 模式 C：直接挂到 Waypoint Gateway
+
+```yaml
+parentRefs:
+- kind: Gateway
+  name: api-waypoint
+```
+
+表示：
+
+```text
+Route / Policy 直接作用于整个 Waypoint
+```
+
+## 14.3 最重要的表
+
+| parentRefs | 配置含义 | 通常执行者 |
+|---|---|---|
+| Gateway/public-gateway | 外部入口规则 | Ingress Gateway |
+| Service/deployment-api | Service 的 Mesh L7 规则 | 对应 Waypoint |
+| Gateway/api-waypoint | 整个 Waypoint 规则 | Waypoint |
+
+核心问题永远是：
+
+> 这条 HTTPRoute 属于谁？最终在哪个 Proxy 上执行？
+
+---
+
+# 15. Egress
+
+Egress：
+
+```text
+Mesh
+ ↓
+Internet
+```
+
+和 Ingress 对称：
+
+```text
+Internet
+ ↓
+Ingress Gateway
+ ↓
+Mesh
+ ↓
+Egress Gateway
+ ↓
+Internet
+```
+
+## 15.1 Egress Gateway 不是访问公网的必需条件
+
+普通 Ambient workload：
+
+```text
+Pod
+ ↓
+ztunnel
+ ↓
+Internet
+```
+
+就可以访问公网。
+
+Egress Gateway 的价值是：
+
+```text
+统一出口
+统一审计
+统一策略
+固定出口 IP
+TLS Origination
+L7 控制
+```
+
+## 15.2 ServiceEntry
+
+Istio 需要知道：
+
+```text
+api.external.com
+```
+
+是一个外部服务。
+
+可以：
+
+```yaml
+apiVersion: networking.istio.io/v1
+kind: ServiceEntry
+metadata:
+  name: external-api
+  namespace: istio-egress
+spec:
+  hosts:
+  - api.external.com
+
+  location: MESH_EXTERNAL
+
+  ports:
+  - number: 443
+    name: https
+    protocol: HTTPS
+
+  resolution: DNS
+```
+
+ServiceEntry 的作用：
+
+```text
+把 Kubernetes 外部服务
+加入 Istio Service Registry
+```
+
+但：
+
+```text
+ServiceEntry ≠ Egress Gateway
+```
+
+## 15.3 Ambient Egress + Waypoint
+
+可以：
+
+```text
+deployment-api
+       │
+       ▼
+    ztunnel
+       │
+       ▼
+  egress-waypoint
+       │
+       ▼
+api.external.com
+```
+
+ServiceEntry 可以绑定：
+
+```yaml
+metadata:
+  labels:
+    istio.io/use-waypoint: egress-waypoint
+```
+
+## 15.4 HTTPS 直连
+
+应用：
+
+```text
+HTTPS
+ ↓
+ztunnel
+ ↓
+egress-waypoint
+ ↓
+Internet
+```
+
+Waypoint 只能看到：
+
+```text
+encrypted TLS bytes
+```
+
+看不到：
+
+```text
+GET /xxx
+POST /xxx
+Authorization Header
+```
+
+所以无法做完整 HTTP L7 Policy。
+
+## 15.5 TLS Origination
+
+如果希望 Egress Waypoint 看懂 HTTP：
+
+```text
+Application
+     │
+     │ HTTP
+     ▼
+ztunnel
+     │
+     │ HBONE + mTLS
+     ▼
+Egress Waypoint
+     │
+     │ TLS Origination
+     ▼
+   HTTPS
+     │
+     ▼
+External API
+```
+
+这样：
+
+```text
+Pod → Egress
+=
+HTTP inside Istio mTLS
+
+Egress → Internet
+=
+HTTPS
+```
+
+示例：
+
+```yaml
+apiVersion: networking.istio.io/v1
+kind: ServiceEntry
+metadata:
+  name: external-api
+  namespace: istio-egress
+  labels:
+    istio.io/use-waypoint: egress-waypoint
+
+spec:
+  hosts:
+  - api.external.com
+
+  ports:
+  - number: 80
+    name: http
+    protocol: HTTP
+    targetPort: 443
+
+  resolution: DNS
+```
+
+配合：
+
+```yaml
+apiVersion: networking.istio.io/v1
+kind: DestinationRule
+metadata:
+  name: external-api-tls
+  namespace: istio-egress
+spec:
+  host: api.external.com
+
+  trafficPolicy:
+    tls:
+      mode: SIMPLE
+```
+
+含义：
+
+```text
+App:
+http://api.external.com:80
+
+       ↓
+
+Egress Waypoint
+
+       ↓
+
+TLS Origination
+
+       ↓
+
+https://api.external.com:443
+```
+
+## 15.6 固定出口 IP
+
+典型需求：
+
+```text
+第三方只允许固定 IP
+```
+
+则：
+
+```text
+Pod A ───┐
+Pod B ───┼→ Egress Gateway → 固定 NAT/Public IP
+Pod C ───┘
+```
+
+## 15.7 Egress Gateway 不等于防火墙
+
+如果 Pod 可以：
+
+```text
+绕过 Mesh
+ ↓
+直接 Linux Network
+ ↓
+Internet
+```
+
+Istio 不能单独阻止。
+
+严格 Egress 通常还需要：
+
+```text
+Kubernetes NetworkPolicy
+云防火墙
+Security Group
+NAT / Route
+节点网络策略
+```
+
+---
+
+# 16. 最终总览图
+
+## 16.1 Ambient 整体架构
+
+```text
+                         Internet
+                            │
+                            ▼
+                  ┌──────────────────┐
+                  │ Ingress Gateway  │
+                  │      Envoy       │
+                  │                  │
+                  │ TLS / Host / Path│
+                  └────────┬─────────┘
+                           │
+                           ▼
+
+──────────────────── Kubernetes / Mesh ───────────────────
+
+                        ztunnel
+                           │
+                           │ HBONE + mTLS
+                           ▼
+                    ┌──────────────┐
+                    │  Waypoint    │
+                    │    Envoy     │
+                    │              │
+                    │ Retry        │
+                    │ Timeout      │
+                    │ HTTPRoute    │
+                    │ L7 Auth      │
+                    └──────┬───────┘
+                           │
+                           ▼
+                        ztunnel
+                           │
+                           ▼
+                      Application
+                           │
+                           │
+                           ▼
+                        ztunnel
+                           │
+                           ▼
+                  ┌──────────────────┐
+                  │ Egress Waypoint  │
+                  │ / Gateway        │
+                  │                  │
+                  │ L7 / TLS Origin  │
+                  └────────┬─────────┘
+                           │
+                           ▼
+                        Internet
+```
+
+## 16.2 三个核心代理角色
+
+```text
+Ingress Gateway
+=
+Internet → Mesh
+
+
+ztunnel
+=
+Mesh 内 L4、安全、mTLS、Identity
+
+
+Waypoint
+=
+目标 Service 的 L7
+
+
+Egress Gateway / Egress Waypoint
+=
+Mesh → Internet
+```
+
+## 16.3 最重要的学习结论
+
+```text
+1. istiod 不处理业务流量，只下发配置。
+
+2. xDS 是 istiod 向 Proxy 下发动态配置的机制。
+
+3. Ambient 并不是没有 Proxy，
+   而是没有 per-Pod Sidecar。
+
+4. ztunnel = L4。
+
+5. Waypoint = L7。
+
+6. Workload Identity 基于 ServiceAccount + SPIFFE + X.509。
+
+7. mTLS 解决身份认证 + 加密。
+
+8. AuthorizationPolicy 解决“谁能访问谁”。
+
+9. Ingress Gateway 负责外部流量进入 Mesh。
+
+10. Waypoint 默认主要治理东西流量，
+    但也可以显式让 Ingress 流量经过。
+
+11. HTTPRoute 的执行位置由 parentRefs 决定。
+
+12. parentRef → Gateway：
+    通常由 Ingress / Gateway Proxy 执行。
+
+13. parentRef → Service：
+    通常由该 Service 对应的 Waypoint 执行。
+
+14. Retry / Timeout 属于 L7，因此由 Waypoint / Envoy 执行。
+
+15. ServiceEntry 让 Istio 认识外部服务。
+
+16. Egress Gateway 用于统一出口、审计、安全和固定公网 IP。
+
+17. 内部普通微服务通常可以：
+    App HTTP + Mesh mTLS，
+    不必自己再搞一层 HTTPS。
+
+18. 如果应用自己 HTTPS，
+    ztunnel 仍然可以传输，
+    但 Waypoint 无法直接看到 HTTP L7 内容。
+```
+
+---
+
+# 后续建议学习
+
+接下来可以继续：
+
+```text
+1. HTTPRoute 90/10 金丝雀
+
+2. Retry / Timeout 与 traffic split 的执行顺序
+
+3. Circuit Breaking
+
+4. Fault Injection
+
+5. L7 AuthorizationPolicy
+
+6. JWT / RequestAuthentication
+
+7. Observability
+   - metrics
+   - access log
+   - tracing
+   - OpenTelemetry
+
+8. Ambient + Prometheus / Grafana / Tempo
+
+9. Egress 完整实战
+
+10. 从 Traefik 迁移到 Istio Gateway
+
+11. K3s 上的 Istio Ambient 实战
+
+12. Production:
+    - HA
+    - HPA
+    - PDB
+    - Upgrade
+    - Multi-cluster
+```
