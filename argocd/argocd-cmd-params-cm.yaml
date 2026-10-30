@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-cmd-params-cm
+  namespace: argocd
+data:
+  # Public HTTPS terminates at the reverse proxy; Gateway forwards HTTP.
+  server.insecure: "true"
